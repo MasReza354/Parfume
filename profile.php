@@ -1,21 +1,49 @@
 <?php
 require_once 'config/database.php';
 
+// Language setup
+$lang = $_GET['lang'] ?? ($_SESSION['lang'] ?? 'id');
+$_SESSION['lang'] = $lang;
+
 // Check if user is logged in
 if (!isLoggedIn()) {
   header('Location: auth/login.php?redirect=profile');
   exit;
 }
 
+// Ensure photo column exists (for profile picture)
+$photoColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'photo'");
+if ($photoColumn && $photoColumn->num_rows === 0) {
+  $conn->query("ALTER TABLE users ADD COLUMN photo VARCHAR(255) NULL DEFAULT NULL AFTER address");
+}
+
 // Get current user data
 $user = getCurrentUser();
 $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $user['id'])->fetch_assoc();
 
+// Handle delete photo
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_photo'])) {
+  if (!empty($userDetails['photo']) && file_exists($userDetails['photo'])) {
+    @unlink($userDetails['photo']);
+  }
+  
+  $stmt = $conn->prepare("UPDATE users SET photo = NULL WHERE id = ?");
+  $stmt->bind_param("i", $user['id']);
+  if ($stmt->execute()) {
+    $_SESSION['success_message'] = 'Profile photo deleted successfully!';
+  } else {
+    $_SESSION['error_message'] = 'Failed to delete photo';
+  }
+  
+  header('Location: profile.php');
+  exit;
+}
+
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
-  $fullName = $_POST['full_name'] ?? '';
-  $phone = $_POST['phone'] ?? '';
-  $address = $_POST['address'] ?? '';
+  $fullName = trim($_POST['full_name'] ?? '');
+  $phone = trim($_POST['phone'] ?? '');
+  $address = trim($_POST['address'] ?? '');
 
   $errors = [];
 
@@ -31,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
       $maxSize = 2 * 1024 * 1024; // 2MB
 
       $fileInfo = finfo_open(FILEINFO_MIME_TYPE);
-      $fileInfo->file($_FILES['photo']['tmp_name']);
-      $mimeType = $fileInfo->mime();
+      $mimeType = finfo_file($fileInfo, $_FILES['photo']['tmp_name']);
+      finfo_close($fileInfo);
 
       if (!in_array($mimeType, $allowedTypes)) {
         $errors[] = 'Only JPG, PNG, and GIF images are allowed';
@@ -46,16 +74,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         }
 
         // Generate unique filename
-        $filename = time() . '_' . basename($_FILES['photo']['name']);
+        $safeName = preg_replace('/[^A-Za-z0-9_\.-]/', '_', basename($_FILES['photo']['name']));
+        $filename = time() . '_' . $safeName;
         $targetPath = $uploadDir . $filename;
 
         if (move_uploaded_file($_FILES['photo']['tmp_name'], $targetPath)) {
-          $photoPath = $targetPath;
-
-          // Delete old photo if exists
+          // Delete old photo if exists and not same as new
           if (!empty($userDetails['photo']) && file_exists($userDetails['photo'])) {
-            unlink($userDetails['photo']);
+            @unlink($userDetails['photo']);
           }
+          $photoPath = $targetPath;
         } else {
           $errors[] = 'Failed to upload photo';
         }
@@ -66,7 +94,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
       // Update user profile
       $stmt = $conn->prepare("UPDATE users SET full_name = ?, phone = ?, address = ?, photo = ? WHERE id = ?");
       $stmt->bind_param("ssssi", $fullName, $phone, $address, $photoPath, $user['id']);
-
       if ($stmt->execute()) {
         $_SESSION['success_message'] = 'Profile updated successfully!';
         $_SESSION['full_name'] = $fullName; // Update session
@@ -87,7 +114,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
   $currentPassword = $_POST['current_password'] ?? '';
   $newPassword = $_POST['new_password'] ?? '';
   $confirmPassword = $_POST['confirm_password'] ?? '';
-
   $errors = [];
 
   if (empty($currentPassword)) {
@@ -98,8 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     $errors[] = 'New password is required';
   }
 
-  if (strlen($newPassword) < 6) {
-    $errors[] = 'New password must be at least 6 characters';
+  if (strlen($newPassword) < 8) {
+    $errors[] = 'New password must be at least 8 characters';
   }
 
   if ($newPassword !== $confirmPassword) {
@@ -109,15 +135,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
   if (empty($errors)) {
     // Verify current password
     if (password_verify($currentPassword, $userDetails['password'])) {
-      // Update password
-      $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-      $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
-      $stmt->bind_param("si", $hashedPassword, $user['id']);
-
-      if ($stmt->execute()) {
-        $_SESSION['success_message'] = 'Password changed successfully!';
+      if (password_verify($newPassword, $userDetails['password'])) {
+        $errors[] = 'New password must be different from current password';
       } else {
-        $_SESSION['error_message'] = 'Failed to change password';
+        // Update password
+        $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+        $stmt->bind_param("si", $hashedPassword, $user['id']);
+
+        if ($stmt->execute()) {
+          $_SESSION['success_message'] = 'Password changed successfully!';
+        } else {
+          $_SESSION['error_message'] = 'Failed to change password';
+        }
       }
     } else {
       $errors[] = 'Current password is incorrect';
@@ -137,266 +167,536 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Profile - Ardéliana Lux</title>
+  <title>My Profile - Parfumé Lux</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="auth.css">
-  <link rel="stylesheet" href="cart.css">
+  <link rel="stylesheet" href="perfume-cards.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    /* Profile Page Specific Styles */
+    body {
+      background: linear-gradient(135deg, #fdecec 0%, #f5cdcd 50%, #fdecec 100%);
+      min-height: 100vh;
+    }
+
+    .back-home {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-dark);
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      padding: 10px 20px;
+      background: var(--white);
+      border-radius: 25px;
+      box-shadow: 0 2px 10px rgba(205, 127, 127, 0.1);
+    }
+
+    .back-home:hover {
+      color: var(--hover-color);
+      transform: translateX(-5px);
+      box-shadow: 0 4px 15px rgba(205, 127, 127, 0.2);
+    }
+
     .profile-section {
-      padding: 80px 0;
-      min-height: 60vh;
+      padding: 40px 0 80px;
     }
 
+    .section-header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 40px 20px;
+      background: var(--white);
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.1);
+    }
+
+    .section-title {
+      font-family: var(--header-font);
+      font-size: 3rem;
+      font-weight: bold;
+      background: var(--gradient-color);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .section-subtitle {
+      font-size: 1.1rem;
+      color: var(--light-text);
+      margin-bottom: 0;
+    }
+
+    .profile-actions {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    /* Profile Container */
     .profile-container {
-      max-width: 1200px;
-      margin: 0 auto;
       display: grid;
-      grid-template-columns: 1fr 2fr;
+      grid-template-columns: 350px 1fr;
       gap: 30px;
+      align-items: start;
     }
 
+    /* Profile Sidebar */
     .profile-sidebar {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-      height: fit-content;
+      background: var(--white);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.1);
+      position: sticky;
+      top: 20px;
     }
 
     .profile-photo {
-      text-align: center;
-      padding: 30px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      width: 150px;
+      height: 150px;
+      margin: 0 auto 25px;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 5px solid transparent;
+      background: linear-gradient(white, white) padding-box,
+                  var(--gradient-color) border-box;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.2);
     }
 
     .profile-photo img {
-      width: 150px;
-      height: 150px;
-      border-radius: 50%;
-      border: 4px solid white;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      height: 100%;
       object-fit: cover;
     }
 
+    .btn-delete-photo {
+      width: 100%;
+      padding: 10px 15px;
+      background: var(--white);
+      color: #e74c3c;
+      border: 2px solid #e74c3c;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-delete-photo:hover {
+      background: #e74c3c;
+      color: var(--white);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(231, 76, 60, 0.3);
+    }
+
     .profile-info {
-      padding: 20px;
       text-align: center;
     }
 
     .profile-info h3 {
-      margin: 0 0 10px 0;
-      color: #2c3e50;
-      font-size: 1.2rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-dark);
+      margin-bottom: 20px;
+      font-family: var(--header-font);
     }
 
     .profile-info p {
-      color: #6c757d;
-      margin: 5px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: var(--light-text);
+      margin-bottom: 12px;
+      padding: 10px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #fdecec 100%);
+      border-radius: 10px;
     }
 
+    .profile-info p i {
+      color: var(--btn-color);
+      font-size: 1.1rem;
+    }
+
+    /* Profile Main */
     .profile-main {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 25px;
     }
 
     .profile-card {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      background: var(--white);
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.1);
       overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .profile-card:hover {
+      box-shadow: 0 15px 40px rgba(205, 127, 127, 0.15);
     }
 
     .card-header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
-      text-align: center;
+      background: linear-gradient(135deg, #f5cdcd 0%, #cc7f7f 100%);
+      padding: 20px 30px;
     }
 
     .card-header h3 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--white);
       margin: 0;
-      font-size: 1.1rem;
-      font-weight: 600;
+      font-family: var(--header-font);
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .card-body {
-      padding: 25px;
+      padding: 30px;
     }
 
+    /* Form Styles */
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 25px;
     }
 
     .form-group label {
       display: block;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-dark);
       margin-bottom: 8px;
-      font-weight: 500;
-      color: #2c3e50;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
-    .form-group input,
+    .form-group input[type="text"],
+    .form-group input[type="email"],
+    .form-group input[type="tel"],
+    .form-group input[type="password"],
     .form-group textarea {
       width: 100%;
       padding: 12px 15px;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
       font-size: 1rem;
-      transition: border-color 0.3s ease;
+      color: var(--text-dark);
+      background: var(--white);
+      transition: all 0.3s ease;
+      font-family: 'Montserrat', sans-serif;
     }
 
     .form-group input:focus,
     .form-group textarea:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      border-color: var(--btn-color);
+      box-shadow: 0 0 0 3px rgba(205, 127, 127, 0.1);
+    }
+
+    .form-group input:disabled {
+      background: #f5f5f5;
+      cursor: not-allowed;
+      color: #999;
     }
 
     .form-group textarea {
       resize: vertical;
-      min-height: 100px;
+      min-height: 80px;
     }
 
+    /* File Input */
     .file-input-wrapper {
       position: relative;
-      overflow: hidden;
-      display: inline-block;
-      cursor: pointer;
-      width: 100%;
     }
 
-    .file-input-wrapper input[type=file] {
+    .file-input-wrapper input[type="file"] {
       position: absolute;
-      left: -9999px;
+      opacity: 0;
+      width: 0;
+      height: 0;
     }
 
     .file-input-label {
-      display: block;
-      padding: 12px 15px;
-      background: #f8f9fa;
-      border: 2px dashed #dee2e6;
-      border-radius: 8px;
-      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 15px 20px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #fdecec 100%);
+      border: 2px dashed var(--btn-color);
+      border-radius: 10px;
+      color: var(--text-dark);
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
     }
 
     .file-input-label:hover {
-      background: #e9ecef;
-      border-color: #667eea;
+      background: linear-gradient(135deg, #cc7f7f 0%, #f5cdcd 100%);
+      color: var(--white);
+      border-color: var(--hover-color);
     }
 
-    .btn-secondary {
-      background: #6c757d;
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 1rem;
-      font-weight: 500;
-      transition: background-color 0.3s ease;
-      width: 100%;
+    .file-input-label i {
+      font-size: 1.3rem;
     }
 
-    .btn-secondary:hover {
-      background: #5a6268;
-    }
-
+    /* Password Strength */
     .password-strength {
-      margin-top: 5px;
       height: 4px;
+      background: #e0e0e0;
       border-radius: 2px;
-      background: #e9ecef;
-      transition: background 0.3s ease;
+      margin-top: 8px;
+      transition: all 0.3s ease;
     }
 
     .password-strength.weak {
-      background: #dc3545;
+      background: #e74c3c;
       width: 33%;
     }
 
     .password-strength.medium {
-      background: #ffc107;
+      background: #f39c12;
       width: 66%;
     }
 
     .password-strength.strong {
-      background: #28a745;
+      background: #27ae60;
       width: 100%;
     }
 
-    @media (max-width: 768px) {
+    /* Buttons */
+    .btn-primary,
+    .btn-secondary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 15px 25px;
+      border: none;
+      border-radius: 25px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--btn-color) 0%, var(--hover-color) 100%);
+      color: var(--white);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 25px rgba(205, 127, 127, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--white);
+      color: var(--text-dark);
+      border: 2px solid var(--btn-color);
+    }
+
+    .btn-secondary:hover {
+      background: var(--btn-color);
+      color: var(--white);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(205, 127, 127, 0.2);
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    /* Notification */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 10px;
+      color: var(--white);
+      font-weight: 600;
+      z-index: 1000;
+      animation: slideInRight 0.3s ease;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+      max-width: 400px;
+    }
+
+    .notification.success {
+      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    }
+
+    .notification.error {
+      background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 1024px) {
       .profile-container {
         grid-template-columns: 1fr;
-        gap: 20px;
       }
 
-      .profile-photo img {
+      .profile-sidebar {
+        position: static;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .section-title {
+        font-size: 2rem;
+      }
+
+      .section-subtitle {
+        font-size: 0.95rem;
+      }
+
+      .profile-sidebar {
+        padding: 25px;
+      }
+
+      .profile-photo {
         width: 120px;
         height: 120px;
       }
+
+      .profile-info h3 {
+        font-size: 1.3rem;
+      }
+
+      .profile-info p {
+        font-size: 0.85rem;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .card-header {
+        padding: 15px 20px;
+      }
+
+      .card-header h3 {
+        font-size: 1.1rem;
+      }
+
+      .card-body {
+        padding: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .profile-section {
+        padding: 20px 0 60px;
+      }
+
+      .section-header {
+        padding: 30px 15px;
+      }
+
+      .section-title {
+        font-size: 1.6rem;
+      }
+
+      .profile-sidebar {
+        padding: 20px;
+      }
+
+      .profile-photo {
+        width: 100px;
+        height: 100px;
+      }
+
+      .card-body {
+        padding: 15px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        padding: 12px 20px;
+        font-size: 0.9rem;
+      }
+
+      .notification {
+        left: 10px;
+        right: 10px;
+        max-width: none;
+      }
+    }
+
+    /* Animation for cards */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .profile-card {
+      animation: fadeInUp 0.6s ease forwards;
+    }
+
+    .profile-card:nth-child(1) {
+      animation-delay: 0.1s;
+    }
+
+    .profile-card:nth-child(2) {
+      animation-delay: 0.2s;
     }
   </style>
 </head>
 
-<body>
-  <!-- Navigation -->
-  <nav class="navbar">
-    <div class="nav-container">
-      <div class="nav-logo">
-        <img src="images/icon.png" alt="Ardéliana Lux">
-        <span class="logo-text">Ardéliana Lux</span>
-      </div>
-
-      <ul class="nav-menu">
-        <li><a href="index.php" class="nav-link">Home</a></li>
-        <li><a href="index.php#about" class="nav-link">About</a></li>
-        <li><a href="index.php#contact" class="nav-link">Contact</a></li>
-      </ul>
-
-      <div class="nav-actions">
-        <div class="language-switcher">
-          <button class="lang-btn" id="langToggle">
-            <i class="ri-global-line"></i>
-            <span id="currentLang">EN</span>
-          </button>
-        </div>
-
-        <div class="user-menu">
-          <?php if (isLoggedIn()): ?>
-            <div class="user-dropdown">
-              <button class="user-btn">
-                <i class="ri-user-line"></i>
-                <span><?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
-                <i class="ri-arrow-down-s-line"></i>
-              </button>
-              <div class="dropdown-menu">
-                <a href="profile.php" class="active"><i class="ri-user-line"></i> Profile</a>
-                <a href="favorites.php"><i class="ri-heart-line"></i> Favorites</a>
-                <a href="cart.php"><i class="ri-shopping-cart-line"></i> Cart</a>
-                <a href="orders.php"><i class="ri-shopping-bag-line"></i> My Orders</a>
-                <a href="auth/logout.php"><i class="ri-logout-box-line"></i> Logout</a>
-              </div>
-            </div>
-          <?php else: ?>
-            <a href="auth/login.php" class="btn-login">Login</a>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-  </nav>
+<body class="<?php echo isLoggedIn() ? 'user-logged-in' : 'user-logged-out'; ?>">
+  <div style="padding: 1rem 2rem;">
+    <a href="index.php" class="back-home"><i class="ri-arrow-left-line"></i> Kembali ke Beranda</a>
+  </div>
 
   <!-- Profile Section -->
   <section class="profile-section">
     <div class="container">
-      <div class="section-header">
+      <div class="section-header" style="text-align: center;">
         <h1 class="section-title">My Profile</h1>
         <p class="section-subtitle">Manage your personal information and preferences</p>
+        <div class="profile-actions" style="margin-top: 12px;">
+          <a href="orders.php" class="btn-secondary" style="max-width: 220px; width: 100%;">Lihat Pesanan Saya</a>
+        </div>
       </div>
 
       <?php if (isset($_SESSION['success_message'])): ?>
@@ -422,6 +722,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
           <div class="profile-photo">
             <img src="<?php echo !empty($userDetails['photo']) ? htmlspecialchars($userDetails['photo']) : 'https://via.placeholder.com/150'; ?>" alt="Profile Photo">
           </div>
+          <?php if (!empty($userDetails['photo'])): ?>
+            <form method="POST" style="margin-top: 15px;">
+              <button type="submit" name="delete_photo" class="btn-delete-photo" onclick="return confirm('Are you sure you want to delete your profile photo?')">
+                <i class="ri-delete-bin-line"></i> Delete Photo
+              </button>
+            </form>
+          <?php endif; ?>
           <div class="profile-info">
             <h3><?php echo htmlspecialchars($userDetails['full_name']); ?></h3>
             <p><i class="ri-mail-line"></i> <?php echo htmlspecialchars($userDetails['email']); ?></p>
@@ -510,33 +817,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- ===== FOOTER ===== -->
   <footer class="footer">
     <div class="container">
       <div class="footer-content">
         <div class="footer-section">
-          <h3>About Us</h3>
-          <p>Ardéliana Lux - Your destination for premium fragrances</p>
-        </div>
-
-        <div class="footer-section">
-          <h3>Contact</h3>
-          <p>Email: info@ardeliana.com<br>
-            Phone: +62 21 5555 1234</p>
-        </div>
-
-        <div class="footer-section">
-          <h3>Follow Us</h3>
+          <h3>Parfum Lux</h3>
+          <p>Premium parfume store dengan koleksi eksklusif wewangian berkualitas tinggi.</p>
           <div class="social-links">
-            <a href="#"><i class="ri-facebook-line"></i></a>
-            <a href="#"><i class="ri-instagram-line"></i></a>
-            <a href="#"><i class="ri-twitter-line"></i></a>
+            <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer" title="Facebook"><i class="ri-facebook-line"></i></a>
+            <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" title="Instagram"><i class="ri-instagram-line"></i></a>
+            <a href="https://twitter.com/" target="_blank" rel="noopener noreferrer" title="Twitter"><i class="ri-twitter-line"></i></a>
+            <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" title="WhatsApp"><i class="ri-whatsapp-line"></i></a>
           </div>
+        </div>
+
+        <div class="footer-section">
+          <h4>Quick Links</h4>
+          <ul>
+            <li><a href="index.php#about">Tentang</a></li>
+            <li><a href="index.php#products">Produk</a></li>
+            <li><a href="index.php#contact">Kontak</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Customer Service</h4>
+          <ul>
+            <li><a href="shipping-info.php">Shipping Info</a></li>
+            <li><a href="faq.php">FAQ</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Contact Info</h4>
+          <ul>
+            <li><i class="ri-map-pin-line"></i> Jl. Sudirman No. 123, Jakarta</li>
+            <li><i class="ri-phone-line"></i> +62 21 1234 5678</li>
+            <li><i class="ri-mail-line"></i> info@parfumlux.com</li>
+          </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
-        <p>&copy; 2024 Ardéliana Lux. All rights reserved.</p>
+        <p>&copy; 2024 Parfumé Lux. All rights reserved. | Developed by Kelompok 2</p>
       </div>
     </div>
   </footer>

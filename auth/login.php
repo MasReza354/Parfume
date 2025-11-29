@@ -176,100 +176,133 @@ function generateCaptcha()
         <p class="auth-subtitle" data-translate="login_subtitle">Masuk untuk mengakses akun Anda</p>
       </div>
 
-      <form method="POST" class="auth-form" action="login.php">
-        <div class="form-group">
-          <label for="username" data-translate="username_email">Username atau Email</label>
-          <div class="input-with-icon">
-            <i class="ri-user-line"></i>
-            <input type="text" id="username" name="username" required>
+      <form method="POST" class="auth-form login-form" action="login.php">
+        <!-- Login Credentials Section -->
+        <div class="form-section">
+          <div class="section-header">
+            <i class="ri-login-box-line"></i>
+            <h3>Informasi Login</h3>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label for="password" data-translate="password">Password</label>
-          <div class="input-with-icon">
-            <i class="ri-lock-line"></i>
-            <input type="password" id="password" name="password" required>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="captcha" data-translate="captcha">Kode Keamanan</label>
-          <div class="captcha-container">
-            <div class="captcha-image">
-              <img src="captcha.php" alt="CAPTCHA" id="captchaImage">
+          <div class="form-group">
+            <label for="username" data-translate="username_email">
+              Username atau Email <span class="required">*</span>
+            </label>
+            <div class="input-with-icon">
+              <i class="ri-user-line"></i>
+              <input type="text" id="username" name="username" placeholder="Masukkan username atau email" required autocomplete="username">
             </div>
-            <div class="captcha-input">
-              <input type="text" id="captcha" name="captcha" required maxlength="6" placeholder="Masukkan kode">
-              <button type="button" class="btn-refresh-captcha" onclick="refreshCaptcha()">
-                <i class="ri-refresh-line"></i>
-              </button>
+            <small class="form-hint">Gunakan username atau alamat email yang terdaftar</small>
+          </div>
+
+          <div class="form-group">
+            <label for="password" data-translate="password">
+              Password <span class="required">*</span>
+            </label>
+            <div class="input-with-icon">
+              <i class="ri-lock-line"></i>
+              <input type="password" id="password" name="password" placeholder="Masukkan password" required autocomplete="current-password">
             </div>
           </div>
-          <small data-translate="captcha_help">Masukkan karakter yang ada di gambar</small>
+        </div>
+
+        <!-- Security Verification Section -->
+        <div class="form-section">
+          <div class="section-header">
+            <i class="ri-shield-check-line"></i>
+            <h3>Verifikasi Keamanan</h3>
+          </div>
+
+          <div class="form-group">
+            <label for="captcha" data-translate="captcha">
+              Kode Keamanan <span class="required">*</span>
+            </label>
+            <div class="captcha-container">
+              <div class="captcha-image">
+                <img src="captcha.php" alt="CAPTCHA" id="captchaImage">
+              </div>
+              <div class="captcha-input">
+                <input type="text" id="captcha" name="captcha" required maxlength="6" placeholder="Masukkan kode" autocomplete="off">
+                <button type="button" class="btn-refresh-captcha" onclick="refreshCaptcha()" title="Muat ulang kode">
+                  <i class="ri-refresh-line"></i>
+                </button>
+              </div>
+            </div>
+            <small class="form-hint" data-translate="captcha_help">
+              <i class="ri-information-line"></i> Masukkan 6 karakter yang terlihat di gambar (tidak case-sensitive)
+            </small>
+          </div>
         </div>
 
         <div class="form-group">
-          <button type="submit" class="btn-primary btn-block" data-translate="login">Masuk</button>
+          <button type="submit" class="btn-primary btn-block" data-translate="login">
+            <i class="ri-login-circle-line"></i> Masuk Sekarang
+          </button>
         </div>
 
         <div class="auth-links">
           <p data-translate="no_account">Belum punya akun?</p>
-          <a href="register.php" class="link" data-translate="register_here">Daftar di sini</a>
+          <a href="register.php" class="link" data-translate="register_here">
+            <i class="ri-user-add-line"></i> Daftar di sini
+          </a>
         </div>
       </form>
 
       <div class="quick-accounts">
         <div class="quick-accounts-header">
-          <i class="ri-contacts-book-line"></i>
+          <i class="ri-shield-user-line"></i>
           <div>
             <p class="qa-title">Akun Siap Pakai</p>
-            <p class="qa-note">Pilih akun demo untuk uji coba cepat</p>
+            <p class="qa-note">Pilih akun demo untuk uji coba cepat - Klik "Isi otomatis" untuk login instan</p>
           </div>
         </div>
 
         <div class="quick-account-list">
           <div class="quick-account-card">
             <div>
-              <p class="qa-role">Admin</p>
-              <p class="qa-cred"><strong>Username/Email:</strong> admin / admin@parfumlux.com</p>
+              <p class="qa-role"><i class="ri-admin-line"></i> Admin</p>
+              <p class="qa-cred"><strong>Username:</strong> admin</p>
+              <p class="qa-cred"><strong>Email:</strong> admin@parfumlux.com</p>
               <p class="qa-cred"><strong>Password:</strong> admin123</p>
             </div>
             <button type="button" class="btn-secondary fill-account" data-username="admin" data-password="admin123">
-              Isi otomatis
+              <i class="ri-login-box-line"></i> Isi otomatis
             </button>
           </div>
 
           <div class="quick-account-card">
             <div>
-              <p class="qa-role">Superadmin</p>
-              <p class="qa-cred"><strong>Username/Email:</strong> superadmin / superadmin@parfumlux.com</p>
+              <p class="qa-role"><i class="ri-shield-star-line"></i> Superadmin</p>
+              <p class="qa-cred"><strong>Username:</strong> superadmin</p>
+              <p class="qa-cred"><strong>Email:</strong> superadmin@parfumlux.com</p>
               <p class="qa-cred"><strong>Password:</strong> superadmin123</p>
             </div>
             <button type="button" class="btn-secondary fill-account" data-username="superadmin" data-password="superadmin123">
-              Isi otomatis
+              <i class="ri-login-box-line"></i> Isi otomatis
             </button>
           </div>
 
           <div class="quick-account-card">
             <div>
-              <p class="qa-role">Karyawan</p>
-              <p class="qa-cred"><strong>Username/Email:</strong> cabang1 / cabang1@gmail.com</p>
+              <p class="qa-role"><i class="ri-user-settings-line"></i> Karyawan</p>
+              <p class="qa-cred"><strong>Username:</strong> cabang1</p>
+              <p class="qa-cred"><strong>Email:</strong> cabang1@gmail.com</p>
               <p class="qa-cred"><strong>Password:</strong> password</p>
             </div>
             <button type="button" class="btn-secondary fill-account" data-username="cabang1" data-password="password">
-              Isi otomatis
+              <i class="ri-login-box-line"></i> Isi otomatis
             </button>
           </div>
 
           <div class="quick-account-card">
             <div>
-              <p class="qa-role">Demo</p>
-              <p class="qa-cred"><strong>Username/Email:</strong> demo / demo@parfumlux.com</p>
+              <p class="qa-role"><i class="ri-user-smile-line"></i> Demo User</p>
+              <p class="qa-cred"><strong>Username:</strong> demo</p>
+              <p class="qa-cred"><strong>Email:</strong> demo@parfumlux.com</p>
               <p class="qa-cred"><strong>Password:</strong> demo123</p>
             </div>
             <button type="button" class="btn-secondary fill-account" data-username="demo" data-password="demo123">
-              Isi otomatis
+              <i class="ri-login-box-line"></i> Isi otomatis
             </button>
           </div>
         </div>
@@ -283,6 +316,12 @@ function generateCaptcha()
       const captchaImg = document.getElementById('captchaImage');
       if (captchaImg) {
         captchaImg.src = 'captcha.php?t=' + Date.now();
+        // Clear captcha input
+        const captchaInput = document.getElementById('captcha');
+        if (captchaInput) {
+          captchaInput.value = '';
+          captchaInput.focus();
+        }
       }
     }
 
@@ -292,17 +331,67 @@ function generateCaptcha()
     // Autofill credentials for preset accounts
     const usernameInput = document.getElementById('username');
     const passwordInput = document.getElementById('password');
+    const captchaInput = document.getElementById('captcha');
 
     document.querySelectorAll('.fill-account').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (usernameInput && passwordInput) {
           usernameInput.value = btn.dataset.username || '';
           passwordInput.value = btn.dataset.password || '';
-          usernameInput.focus();
+          
+          // Visual feedback
+          usernameInput.style.borderColor = '#27ae60';
+          passwordInput.style.borderColor = '#27ae60';
+          
+          // Focus on captcha input
+          if (captchaInput) {
+            captchaInput.focus();
+          }
+          
           refreshCaptcha();
         }
       });
     });
+
+    // Input validation visual feedback
+    if (usernameInput) {
+      usernameInput.addEventListener('input', function() {
+        if (this.value.length >= 3) {
+          this.style.borderColor = '#27ae60';
+        } else if (this.value.length > 0) {
+          this.style.borderColor = '#f39c12';
+        } else {
+          this.style.borderColor = '#dee2e6';
+        }
+      });
+    }
+
+    if (passwordInput) {
+      passwordInput.addEventListener('input', function() {
+        if (this.value.length >= 6) {
+          this.style.borderColor = '#27ae60';
+        } else if (this.value.length > 0) {
+          this.style.borderColor = '#f39c12';
+        } else {
+          this.style.borderColor = '#dee2e6';
+        }
+      });
+    }
+
+    if (captchaInput) {
+      captchaInput.addEventListener('input', function() {
+        // Auto uppercase
+        this.value = this.value.toUpperCase();
+        
+        if (this.value.length === 6) {
+          this.style.borderColor = '#27ae60';
+        } else if (this.value.length > 0) {
+          this.style.borderColor = '#f39c12';
+        } else {
+          this.style.borderColor = '#dee2e6';
+        }
+      });
+    }
   </script>
 
   <?php

@@ -61,7 +61,7 @@ function createTables($conn)
     $stmtInsert->bind_param(
       "sssssss",
       $adminUsername,
-      'admin@ardeliana.com',
+      'admin@parfumelux.com',
       $hashedPassword,
       'Administrator',
       null,
@@ -85,7 +85,7 @@ function createTables($conn)
     $stmtInsert->bind_param(
       "sssssss",
       $superAdminUsername,
-      'superadmin@ardeliana.com',
+      'superadmin@parfumelux.com',
       $hashedPassword,
       'Super Administrator',
       null,

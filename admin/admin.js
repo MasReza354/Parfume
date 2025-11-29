@@ -354,13 +354,31 @@ function viewOrderDetails(orderId) {
   modal.style.display = 'flex';
   content.innerHTML = '<div class="invoice-loader">Mengambil data...</div>';
 
-  // Fetch API
-  fetch(`dashboard.php?action=get_order_details&order_id=${orderId}`)
+  // Check if order was recently updated, add small delay to ensure DB is updated
+  const recentlyUpdated = window.orderUpdateTimestamps && 
+                          window.orderUpdateTimestamps[orderId] && 
+                          (Date.now() - window.orderUpdateTimestamps[orderId]) < 1000;
+  
+  const fetchDelay = recentlyUpdated ? 300 : 0;
+  
+  setTimeout(() => {
+    // Fetch API with cache busting to ensure fresh data
+    const timestamp = new Date().getTime();
+    fetch(`dashboard.php?action=get_order_details&order_id=${orderId}&_=${timestamp}`, {
+      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    })
     .then((response) => response.json())
     .then((data) => {
       if (data.success) {
         const o = data.order;
         const items = data.items;
+        
+        // Debug: Log order status
+        console.log('Order Status:', o.order_status, 'Payment Status:', o.payment_status);
 
         let itemRows = '';
         items.forEach((item) => {
@@ -381,7 +399,7 @@ function viewOrderDetails(orderId) {
                 <div class="invoice-box">
                     <div class="invoice-header-box">
                         <div class="inv-logo">
-                            <h2>ARDÉLIANA LUX</h2>
+                            <h2>PARFUMÉ LUX</h2>
                             <p>Exclusive Perfumery</p>
                         </div>
                         <div class="inv-meta">
@@ -391,8 +409,8 @@ function viewOrderDetails(orderId) {
                               o.created_at
                             ).toLocaleDateString('id-ID')}</p>
                             <p><strong>Status:</strong> <span class="status-badge status-${
-                              o.status
-                            }">${o.status.toUpperCase()}</span></p>
+                              o.order_status
+                            }">${o.order_status.toUpperCase()}</span></p>
                         </div>
                     </div>
                     
@@ -432,7 +450,7 @@ function viewOrderDetails(orderId) {
                     </table>
 
                     <div class="invoice-footer">
-                        <p>Terima kasih telah berbelanja di Ardéliana Lux.</p>
+                        <p>Terima kasih telah berbelanja di Parfumé Lux.</p>
                         <p style="font-size: 0.8rem; color: #888;">Invoice ini dibuat secara otomatis oleh komputer.</p>
                     </div>
                 </div>
@@ -448,6 +466,7 @@ function viewOrderDetails(orderId) {
       content.innerHTML =
         '<p class="error">Terjadi kesalahan saat memuat data.</p>';
     });
+  }, fetchDelay);
 }
 
 function closeOrderModal() {
@@ -501,7 +520,7 @@ function exportOrders() {
         </style>
       </head>
       <body>
-        <h2>Laporan Pesanan - Ardéliana Lux</h2>
+        <h2>Laporan Pesanan - Parfumé Lux</h2>
         <p>Tanggal Export: ${new Date().toLocaleDateString('id-ID')}</p>
         ${clone.outerHTML}
       </body>
@@ -514,7 +533,7 @@ function exportOrders() {
   document.body.appendChild(downloadLink);
 
   downloadLink.href = url;
-  downloadLink.download = `Laporan_Pesanan_Ardeliana_${
+  downloadLink.download = `Laporan_Pesanan_ParfumeLux_${
     new Date().toISOString().split('T')[0]
   }.xls`;
   downloadLink.click();
@@ -562,7 +581,7 @@ function exportUsers() {
         </style>
       </head>
       <body>
-        <h2>Laporan Pengguna - Ardéliana Lux</h2>
+        <h2>Laporan Pengguna - Parfumé Lux</h2>
         <p>Tanggal Export: ${new Date().toLocaleDateString('id-ID')}</p>
         ${clone.outerHTML}
       </body>
@@ -575,7 +594,7 @@ function exportUsers() {
   document.body.appendChild(downloadLink);
 
   downloadLink.href = url;
-  downloadLink.download = `Laporan_Pengguna_Ardeliana_${
+  downloadLink.download = `Laporan_Pengguna_ParfumeLux_${
     new Date().toISOString().split('T')[0]
   }.xls`;
   downloadLink.click();

@@ -140,6 +140,12 @@ $totalRevenue = $revenueResult->fetch_assoc()['total'] ?? 0;
 
 // Handle AJAX request for order details
 if (isset($_GET['action']) && $_GET['action'] === 'get_order_details') {
+  // Prevent caching
+  header('Cache-Control: no-cache, no-store, must-revalidate');
+  header('Pragma: no-cache');
+  header('Expires: 0');
+  header('Content-Type: application/json');
+  
   $orderId = $_GET['order_id'] ?? 0;
 
   $orderQuery = $conn->prepare("SELECT o.*, u.full_name, u.email, u.phone FROM orders o JOIN users u ON o.user_id = u.id WHERE o.id = ?");
@@ -148,15 +154,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_order_details') {
   $order = $orderQuery->get_result()->fetch_assoc();
 
   if ($order) {
-    $itemsQuery = $conn->prepare("SELECT oi.*, p.name as product_name FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?");
+    // Use LEFT JOIN to include items without product_id (like bubble wrap, wooden packing)
+    $itemsQuery = $conn->prepare("SELECT oi.*, COALESCE(p.name, oi.product_name) as product_name, oi.product_price as price, oi.quantity, oi.subtotal FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?");
     $itemsQuery->bind_param("i", $orderId);
     $itemsQuery->execute();
     $items = $itemsQuery->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    header('Content-Type: application/json');
     echo json_encode(['success' => true, 'order' => $order, 'items' => $items]);
   } else {
-    header('Content-Type: application/json');
     echo json_encode(['success' => false]);
   }
   exit;
@@ -286,14 +291,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   // Update order status
   if (isset($_POST['update_order_status'])) {
     $id = $_POST['id'] ?? 0;
-    $status = $_POST['status'] ?? 'pending';
+    $orderStatus = $_POST['order_status'] ?? 'pending';
 
-    $stmt = $conn->prepare("UPDATE orders SET status = ? WHERE id = ?");
-    $stmt->bind_param("si", $status, $id);
+    $stmt = $conn->prepare("UPDATE orders SET order_status = ?, updated_at = NOW() WHERE id = ?");
+    $stmt->bind_param("si", $orderStatus, $id);
 
+    // Check if this is an AJAX request
+    $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+              strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+    
     if ($stmt->execute()) {
+      if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Status berhasil diperbarui', 'order_status' => $orderStatus]);
+        exit;
+      }
       $_SESSION['success_message'] = 'Status pesanan berhasil diperbarui!';
     } else {
+      if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Gagal memperbarui status']);
+        exit;
+      }
       $_SESSION['error_message'] = 'Gagal memperbarui status pesanan.';
     }
     header("Location: dashboard.php#orders");
@@ -560,7 +579,7 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Admin - Ardéliana Lux</title>
+  <title>Dashboard Admin - Parfumé Lux</title>
   <link rel="stylesheet" href="admin.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -576,7 +595,7 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
   <!-- Admin Sidebar -->
   <div class="admin-sidebar">
     <div class="sidebar-header">
-      <h2>Ardéliana Lux</h2>
+      <h2>Parfumé Lux</h2>
       <p>Panel Admin</p>
     </div>
 
@@ -612,6 +631,11 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
       <a href="#stores" class="nav-item">
         <i class="ri-store-3-line"></i>
         <span>Toko Cabang</span>
+      </a>
+      
+      <a href="../index.php" class="nav-item" style="margin-top: 10px; background: linear-gradient(135deg, #f5cdcd 0%, #cc7f7f 100%); color: white;">
+        <i class="ri-arrow-left-line"></i>
+        <span>Kembali ke Toko</span>
       </a>
     </nav>
 
@@ -877,12 +901,12 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                 <td><?php echo date('d M Y', strtotime($order['created_at'])); ?></td>
                 <td><?php echo formatRupiah($order['total_amount']); ?></td>
                 <td>
-                  <select class="status-select status-<?php echo $order['status']; ?>" onchange="updateOrderStatus(<?php echo $order['id']; ?>, this.value, this)">
-                    <option value="pending" <?php echo $order['status'] === 'pending' ? 'selected' : ''; ?>>Menunggu</option>
-                    <option value="processing" <?php echo $order['status'] === 'processing' ? 'selected' : ''; ?>>Diproses</option>
-                    <option value="shipped" <?php echo $order['status'] === 'shipped' ? 'selected' : ''; ?>>Dikirim</option>
-                    <option value="delivered" <?php echo $order['status'] === 'delivered' ? 'selected' : ''; ?>>Terkirim</option>
-                    <option value="cancelled" <?php echo $order['status'] === 'cancelled' ? 'selected' : ''; ?>>Dibatalkan</option>
+                  <select class="status-select status-<?php echo $order['order_status']; ?>" data-order-id="<?php echo $order['id']; ?>">
+                    <option value="pending" <?php echo $order['order_status'] === 'pending' ? 'selected' : ''; ?>>Menunggu</option>
+                    <option value="processing" <?php echo $order['order_status'] === 'processing' ? 'selected' : ''; ?>>Diproses</option>
+                    <option value="shipped" <?php echo $order['order_status'] === 'shipped' ? 'selected' : ''; ?>>Dikirim</option>
+                    <option value="delivered" <?php echo $order['order_status'] === 'delivered' ? 'selected' : ''; ?>>Terkirim</option>
+                    <option value="cancelled" <?php echo $order['order_status'] === 'cancelled' ? 'selected' : ''; ?>>Dibatalkan</option>
                   </select>
                 </td>
                 <td>
@@ -1402,6 +1426,91 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
   <?php endif; ?>
 
   <script src="admin.js"></script>
+  <script>
+    // Handle order status change
+    document.querySelectorAll('.status-select').forEach(select => {
+      select.addEventListener('change', function() {
+        const orderId = this.dataset.orderId;
+        const newValue = this.value;
+        
+        // Send update request
+        const formData = new FormData();
+        formData.append('update_order_status', '1');
+        formData.append('id', orderId);
+        formData.append('order_status', newValue);
+        
+        // Disable select while updating
+        this.disabled = true;
+        
+        fetch('dashboard.php', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          // Re-enable select
+          this.disabled = false;
+          
+          if (data.success) {
+            // Update select styling
+            this.className = `status-select status-${newValue}`;
+            
+            // Show success message
+            showNotification('Status berhasil diperbarui!', 'success');
+            
+            // Store update timestamp for this order
+            if (!window.orderUpdateTimestamps) {
+              window.orderUpdateTimestamps = {};
+            }
+            window.orderUpdateTimestamps[orderId] = Date.now();
+            
+            console.log('Status updated for order:', orderId, 'to', newValue, 'at', new Date().toISOString());
+          } else {
+            showNotification(data.message || 'Gagal memperbarui status', 'error');
+          }
+        })
+        .catch(error => {
+          // Re-enable select
+          this.disabled = false;
+          
+          console.error('Error:', error);
+          showNotification('Terjadi kesalahan', 'error');
+        });
+      });
+    });
+    
+    function showNotification(message, type) {
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 25px;
+        background: ${type === 'success' ? '#4CAF50' : '#f44336'};
+        color: white;
+        border-radius: 10px;
+        z-index: 10000;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+      `;
+      
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transition = 'opacity 0.3s';
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+        }, 300);
+      }, 3000);
+    }
+  </script>
 </body>
 
 </html>

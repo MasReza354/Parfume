@@ -31,8 +31,8 @@ $translations = [
     'price_high_low' => 'Harga: Tinggi ke Rendah',
     'no_products' => 'Tidak ada produk ditemukan',
     'try_adjusting_filters' => 'Coba sesuaikan filter untuk melihat lebih banyak hasil',
-    'about_title' => 'Tentang Ardéliana Lux',
-    'about_description' => 'Ardéliana Lux adalah toko parfum premium yang menawarkan koleksi eksklusif wewangian berkualitas tinggi dari merek-merek terkenal dunia.',
+    'about_title' => 'Tentang Parfumé Lux',
+    'about_description' => 'Parfumé Lux adalah toko parfum premium yang menawarkan koleksi eksklusif wewangian berkualitas tinggi dari merek-merek terkenal dunia.',
     'contact_title' => 'Hubungi Kami',
     'contact_description' => 'Hubungi kami untuk informasi lebih lanjut tentang produk dan layanan kami.',
     'our_collection' => 'Koleksi Premium Kami',
@@ -64,8 +64,8 @@ $translations = [
     'price_high_low' => 'Price: High to Low',
     'no_products' => 'No products found',
     'try_adjusting_filters' => 'Try adjusting your filters to see more results',
-    'about_title' => 'About Ardéliana Lux',
-    'about_description' => 'Ardéliana Lux is a premium perfume store offering exclusive collections of high-quality fragrances from world-renowned brands.',
+    'about_title' => 'About Parfumé Lux',
+    'about_description' => 'Parfumé Lux is a premium perfume store offering exclusive collections of high-quality fragrances from world-renowned brands.',
     'contact_description' => 'Contact us for more information about our products and services.',
     'our_collection' => 'Our Premium Collection',
     'discover_scent' => 'Discover your perfect scent from our exclusive parfume collection',
@@ -95,7 +95,7 @@ $page = $_GET['page'] ?? 'home';
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ardéliana Lux - Premium Parfume</title>
+  <title>Parfumé Lux - Premium Parfume</title>
 
   <!-- ===== CSS LINK ===== -->
   <link rel="stylesheet" href="style.css" />
@@ -113,7 +113,7 @@ $page = $_GET['page'] ?? 'home';
   <!-- ===== NAV ===== -->
   <nav>
     <div class="nav__logo">
-      <a href="index.php">Ardéliana<span> Lux.</span></a>
+      <a href="index.php">Parfumé<span> Lux.</span></a>
     </div>
 
     <ul class="nav__links">
@@ -170,7 +170,7 @@ $page = $_GET['page'] ?? 'home';
     <section class="hero">
       <div class="side-info">
         <div class="line"></div>
-        <span>Developed By Lisa Ardeliana</span>
+        <span>Developed By Kelompok 2</span>
       </div>
 
       <div class="content">
@@ -188,7 +188,7 @@ $page = $_GET['page'] ?? 'home';
         <div class="hero-buttons">
           <button class="btn hero-add-to-cart" onclick="addToCart(1)">
             <i class="ri-shopping-cart-line"></i>
-            Rp 1.250.000 | ADD TO CART
+            ADD TO CART
           </button>
           <button class="btn-secondary hero-add-favorites" onclick="addToFavorites(1)">
             <i class="ri-heart-line"></i>
@@ -329,6 +329,21 @@ $page = $_GET['page'] ?? 'home';
           <div class="about-text">
             <p><?php echo $t['about_description']; ?></p>
             <p>Kami menyediakan berbagai macam parfum dengan kualitas terbaik, mulai dari aroma floral yang lembut hingga woody yang maskulin. Setiap produk di koleksi kami dipilih dengan teliti untuk memastikan kualitas dan keaslian.</p>
+            
+            <!-- Vision & Mission -->
+            <div class="about-features vision-mission-features">
+              <div class="feature vm-feature">
+                <i class="ri-eye-line"></i>
+                <h4>Visi Kami</h4>
+                <p>Menjadi destinasi utama parfum premium di Indonesia yang menghadirkan pengalaman wewangian eksklusif dan berkelas dunia</p>
+              </div>
+              <div class="feature vm-feature">
+                <i class="ri-flag-line"></i>
+                <h4>Misi Kami</h4>
+                <p>Menyediakan parfum original, pelayanan excellent, dan membangun komunitas pecinta parfum yang solid</p>
+              </div>
+            </div>
+
             <div class="about-features">
               <div class="feature">
                 <i class="ri-shield-check-line"></i>
@@ -348,7 +363,7 @@ $page = $_GET['page'] ?? 'home';
             </div>
           </div>
           <div class="about-image">
-            <img src="images/perfume.png" alt="About Ardéliana Lux">
+            <img src="images/perfume.png" alt="About Parfumé Lux">
           </div>
         </div>
       </div>
@@ -381,7 +396,7 @@ $page = $_GET['page'] ?? 'home';
               <i class="ri-mail-line"></i>
               <div>
                 <h4>Email</h4>
-                <p>info@ardelianalux.com</p>
+                <p>info@parfumelux.com</p>
               </div>
             </div>
             <div class="contact-item">
@@ -420,13 +435,13 @@ $page = $_GET['page'] ?? 'home';
     <div class="container">
       <div class="footer-content">
         <div class="footer-section">
-          <h3>Ardéliana Lux</h3>
+          <h3>Parfumé Lux</h3>
           <p>Premium parfume store dengan koleksi eksklusif wewangian berkualitas tinggi.</p>
           <div class="social-links">
-            <a href="#"><i class="ri-facebook-line"></i></a>
-            <a href="#"><i class="ri-instagram-line"></i></a>
-            <a href="#"><i class="ri-twitter-line"></i></a>
-            <a href="#"><i class="ri-whatsapp-line"></i></a>
+            <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer" title="Facebook"><i class="ri-facebook-line"></i></a>
+            <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" title="Instagram"><i class="ri-instagram-line"></i></a>
+            <a href="https://twitter.com/" target="_blank" rel="noopener noreferrer" title="Twitter"><i class="ri-twitter-line"></i></a>
+            <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" title="WhatsApp"><i class="ri-whatsapp-line"></i></a>
           </div>
         </div>
 
@@ -442,10 +457,8 @@ $page = $_GET['page'] ?? 'home';
         <div class="footer-section">
           <h4>Customer Service</h4>
           <ul>
-            <li><a href="#">Shipping Info</a></li>
-            <li><a href="#">Returns</a></li>
-            <li><a href="#">Size Guide</a></li>
-            <li><a href="#">FAQ</a></li>
+            <li><a href="shipping-info.php">Shipping Info</a></li>
+            <li><a href="faq.php">FAQ</a></li>
           </ul>
         </div>
 
@@ -454,13 +467,13 @@ $page = $_GET['page'] ?? 'home';
           <ul>
             <li><i class="ri-map-pin-line"></i> Jl. Sudirman No. 123, Jakarta</li>
             <li><i class="ri-phone-line"></i> +62 21 1234 5678</li>
-            <li><i class="ri-mail-line"></i> info@ardelianalux.com</li>
+            <li><i class="ri-mail-line"></i> info@parfumelux.com</li>
           </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
-        <p>&copy; 2024 Ardéliana Lux. All rights reserved. | Developed by Lisa Ardeliana</p>
+        <p>&copy; 2024 Parfumé Lux. All rights reserved. | Developed by Kelompok 2</p>
       </div>
     </div>
   </footer>
@@ -708,6 +721,8 @@ $page = $_GET['page'] ?? 'home';
           .then(data => {
             if (data.success) {
               showNotification('Added to favorites!', 'success');
+              // Update favorites icon or badge if exists
+              updateFavoritesBadge();
             } else {
               showNotification('Failed to add to favorites', 'error');
             }
@@ -720,6 +735,21 @@ $page = $_GET['page'] ?? 'home';
         showLoginRequiredModal();
       <?php endif; ?>
     }
+
+    function updateFavoritesBadge() {
+      // Optional: Add badge update logic here if you have a favorites badge
+      console.log('Favorites updated');
+    }
+
+    // Add event listeners for favorite buttons in product cards
+    document.querySelectorAll('.favorite-btn').forEach(button => {
+      button.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const productId = this.dataset.id;
+        addToFavorites(productId);
+      });
+    });
 
     function updateCartBadge() {
       fetch('cart.php?get_count=1')

@@ -346,7 +346,7 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Karyawan - Ardéliana Lux</title>
+    <title>Dashboard Karyawan - Parfumé Lux</title>
     <link rel="stylesheet" href="karyawan.css">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -360,18 +360,17 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
 <!-- Sidebar -->
 <div class="admin-sidebar">
     <div class="sidebar-header">
-        <h2>Ardéliana Lux</h2>
+        <h2>Parfumé Lux</h2>
         <p>Panel Karyawan</p>
     </div>
     <nav class="sidebar-nav">
         <a href="#dashboard" class="nav-item active"><i class="ri-dashboard-line"></i><span>Dashboard</span></a>
-        <a href="#products" class="nav-item"><i class="ri-store-2-line"></i><span>Produk</span></a>
-        <?php if ($currentUserRole === 'superadmin'): ?>
-            <a href="#scents" class="nav-item"><i class="ri-flower-line"></i><span>Aroma</span></a>
-            <a href="#types" class="nav-item"><i class="ri-apps-line"></i><span>Tipe</span></a>
-            <a href="#users" class="nav-item"><i class="ri-user-line"></i><span>Pengguna</span></a>
-        <?php endif; ?>
         <a href="#stores" class="nav-item"><i class="ri-store-3-line"></i><span>Toko Cabang</span></a>
+        
+        <a href="../index.php" class="nav-item" style="margin-top: 10px; background: linear-gradient(135deg, #f5cdcd 0%, #cc7f7f 100%); color: white;">
+            <i class="ri-arrow-left-line"></i>
+            <span>Kembali ke Toko</span>
+        </a>
     </nav>
     <div class="sidebar-footer">
         <div class="admin-user">
@@ -455,58 +454,6 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                     <?php endwhile; ?>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- Products Section -->
-    <section id="products-section" class="content-section">
-        <div class="section-header">
-            <h2>Manajemen Produk</h2>
-            <div class="section-actions">
-                <div class="search-box"><input type="text" id="product-search" placeholder="Cari produk..."><i class="ri-search-line"></i></div>
-                <?php if ($currentUserRole === 'superadmin'): ?>
-                    <button class="btn-primary" onclick="showAddProductModal()"><i class="ri-add-line"></i>Tambah Produk</button>
-                <?php endif; ?>
-            </div>
-        </div>
-        <div class="products-table-container">
-            <table class="data-table">
-                <thead><tr><th>Nama</th><th>Tipe</th><th>Aroma</th><th>Harga</th><th>Gambar</th><th>Status</th><th>Stok</th><th>Aksi</th></tr></thead>
-                <tbody id="products-tbody">
-                    <?php if ($products instanceof mysqli_result && $products->num_rows > 0): ?>
-                        <?php while ($product = $products->fetch_assoc()): ?>
-                            <tr data-product='<?php echo json_encode($product); ?>'>
-                                <td><?php echo htmlspecialchars($product['name']); ?></td>
-                                <td><?php echo htmlspecialchars($product['type']); ?></td>
-                                <td><?php echo htmlspecialchars($product['scent']); ?></td>
-                                <td><?php echo formatRupiah($product['price']); ?></td>
-                                <td><img src="<?php echo htmlspecialchars($product['image']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" class="product-thumb"></td>
-                                <td>
-                                    <?php $productStatus = $product['status'] ?? 'inactive'; ?>
-                                    <span class="status-badge <?php echo $productStatus === 'active' ? 'active' : 'inactive'; ?>">
-                                        <?php echo $productStatus === 'active' ? 'Aktif' : 'Tidak Aktif'; ?>
-                                    </span>
-                                </td>
-                                <td><span class="stock-badge <?php echo $product['stock'] < 20 ? 'low-stock' : ''; ?>"><?php echo $product['stock']; ?></span></td>
-                                <td>
-                                    <div class="action-buttons">
-                                        <button class="btn-edit" onclick="editProduct(this)"><i class="ri-edit-line"></i></button>
-                                        <?php if ($currentUserRole === 'superadmin'): ?>
-                                            <button class="btn-delete" onclick="deleteProduct(<?php echo $product['id']; ?>)"><i class="ri-delete-bin-line"></i></button>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="8" class="empty-state">
-                                <?php echo htmlspecialchars($productBranchError ?? 'Belum ada produk yang tersedia untuk ditampilkan.'); ?>
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
         </div>
     </section>
 

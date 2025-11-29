@@ -217,7 +217,7 @@ function viewOrderDetails(orderId) {
                 <div class="invoice-box">
                     <div class="invoice-header-box">
                         <div class="inv-logo">
-                            <h2>ARDÉLIANA LUX</h2>
+                            <h2>PARFUMÉ LUX</h2>
                             <p>Exclusive Perfumery</p>
                         </div>
                         <div class="inv-meta">
@@ -268,7 +268,7 @@ function viewOrderDetails(orderId) {
                     </table>
 
                     <div class="invoice-footer">
-                        <p>Terima kasih telah berbelanja di Ardéliana Lux.</p>
+                        <p>Terima kasih telah berbelanja di Parfumé Lux.</p>
                         <p style="font-size: 0.8rem; color: #888;">Invoice ini dibuat secara otomatis oleh komputer.</p>
                     </div>
                 </div>
@@ -337,7 +337,7 @@ function exportOrders() {
         </style>
       </head>
       <body>
-        <h2>Laporan Pesanan - Ardéliana Lux</h2>
+        <h2>Laporan Pesanan - Parfumé Lux</h2>
         <p>Tanggal Export: ${new Date().toLocaleDateString('id-ID')}</p>
         ${clone.outerHTML}
       </body>
@@ -350,7 +350,7 @@ function exportOrders() {
   document.body.appendChild(downloadLink);
 
   downloadLink.href = url;
-  downloadLink.download = `Laporan_Pesanan_Ardeliana_${
+  downloadLink.download = `Laporan_Pesanan_ParfumeLux_${
     new Date().toISOString().split('T')[0]
   }.xls`;
   downloadLink.click();
@@ -398,7 +398,7 @@ function exportUsers() {
         </style>
       </head>
       <body>
-        <h2>Laporan Pengguna - Ardéliana Lux</h2>
+        <h2>Laporan Pengguna - Parfumé Lux</h2>
         <p>Tanggal Export: ${new Date().toLocaleDateString('id-ID')}</p>
         ${clone.outerHTML}
       </body>
@@ -411,7 +411,7 @@ function exportUsers() {
   document.body.appendChild(downloadLink);
 
   downloadLink.href = url;
-  downloadLink.download = `Laporan_Pengguna_Ardeliana_${
+  downloadLink.download = `Laporan_Pengguna_ParfumeLux_${
     new Date().toISOString().split('T')[0]
   }.xls`;
   downloadLink.click();

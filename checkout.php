@@ -1,6 +1,10 @@
 <?php
 require_once 'config/database.php';
 
+// Language setup
+$lang = $_GET['lang'] ?? ($_SESSION['lang'] ?? 'id');
+$_SESSION['lang'] = $lang;
+
 // Check if user is logged in
 if (!isLoggedIn()) {
   header('Location: auth/login.php?redirect=checkout');
@@ -14,8 +18,64 @@ if (empty($_SESSION['cart'])) {
   exit;
 }
 
+// Handle AJAX cart update
+if (isset($_POST['action']) && $_POST['action'] === 'update_cart_item') {
+  header('Content-Type: application/json');
+  
+  $productId = $_POST['product_id'] ?? 0;
+  $quantity = max(1, intval($_POST['quantity'] ?? 1));
+
+  if (isset($_SESSION['cart'][$productId])) {
+    $_SESSION['cart'][$productId] = $quantity;
+    
+    // Recalculate totals
+    $totalAmount = 0;
+    $itemSubtotal = 0;
+    
+    // Additional items definition for calculation
+    $additionalItems = [
+      'bubble_wrap' => ['price' => 5000],
+      'wooden_packing' => ['price' => 15000]
+    ];
+
+    foreach ($_SESSION['cart'] as $pid => $qty) {
+      $price = 0;
+      
+      if ($pid === 'bubble_wrap' || $pid === 'wooden_packing') {
+        $price = $additionalItems[$pid]['price'];
+      } else {
+        $stmt = $conn->prepare("SELECT price FROM products WHERE id = ?");
+        $stmt->bind_param("i", $pid);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        if ($row = $res->fetch_assoc()) {
+          $price = $row['price'];
+        }
+      }
+      
+      $subtotal = $price * $qty;
+      $totalAmount += $subtotal;
+      
+      if ($pid == $productId) {
+        $itemSubtotal = $subtotal;
+      }
+    }
+    
+    echo json_encode([
+      'success' => true, 
+      'itemSubtotal' => $itemSubtotal, 
+      'totalAmount' => $totalAmount
+    ]);
+  } else {
+    echo json_encode(['success' => false, 'message' => 'Item not found']);
+  }
+  exit;
+}
+
 // Handle order creation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
+  // Reset old errors/data
+  unset($_SESSION['checkout_errors'], $_SESSION['checkout_form_data']);
   
   // Debug logging
   error_log("Checkout POST request received");
@@ -48,13 +108,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
 
   $addressLower = strtolower($shippingAddress);
   $detectedLocation = null;
-  $shippingFee = 50000; // Default shipping fee
+  $shippingFee = 15000; // Default shipping fee
 
   // Detect location and set shipping fee
   foreach ($javaLocations as $location) {
     if (strpos($addressLower, $location) !== false) {
       $detectedLocation = 'Java';
-      $shippingFee = 50000;
+      $shippingFee = 15000;
       break;
     }
   }
@@ -63,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     foreach ($sumatraLocations as $location) {
       if (strpos($addressLower, $location) !== false) {
         $detectedLocation = 'Sumatra';
-        $shippingFee = 75000;
+        $shippingFee = 20000;
         break;
       }
     }
@@ -73,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     foreach ($baliLocations as $location) {
       if (strpos($addressLower, $location) !== false) {
         $detectedLocation = 'Bali';
-        $shippingFee = 100000;
+        $shippingFee = 25000;
         break;
       }
     }
@@ -83,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     foreach ($kalimantanLocations as $location) {
       if (strpos($addressLower, $location) !== false) {
         $detectedLocation = 'Kalimantan';
-        $shippingFee = 100000;
+        $shippingFee = 30000;
         break;
       }
     }
@@ -93,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     foreach ($sulawesiLocations as $location) {
       if (strpos($addressLower, $location) !== false) {
         $detectedLocation = 'Sulawesi';
-        $shippingFee = 125000;
+        $shippingFee = 35000;
         break;
       }
     }
@@ -103,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     foreach ($papuaLocations as $location) {
       if (strpos($addressLower, $location) !== false) {
         $detectedLocation = 'Papua';
-        $shippingFee = 150000;
+        $shippingFee = 40000;
         break;
       }
     }
@@ -113,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     foreach ($nttLocations as $location) {
       if (strpos($addressLower, $location) !== false) {
         $detectedLocation = 'NTT';
-        $shippingFee = 125000;
+        $shippingFee = 35000;
         break;
       }
     }
@@ -139,20 +199,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         ];
         $totalAmount += $subtotal;
       } else {
-        $product = $conn->query("SELECT * FROM products WHERE id = $productId")->fetch_assoc();
-        if ($product) {
-          $subtotal = $product['price'] * $quantity;
-          $orderItems[] = [
-            'product_id' => $productId,
-            'product_name' => $product['name'],
-            'product_price' => $product['price'],
-            'quantity' => $quantity,
-            'subtotal' => $subtotal
-          ];
-          $totalAmount += $subtotal;
+        $productStmt = $conn->prepare("SELECT * FROM products WHERE id = ? AND status = 'active'");
+        $productStmt->bind_param("i", $productId);
+        $productStmt->execute();
+        $product = $productStmt->get_result()->fetch_assoc();
+
+        if (!$product) {
+          $errors[] = 'Produk tidak tersedia atau nonaktif. Silakan perbarui keranjang Anda.';
+          unset($_SESSION['cart'][$productId]);
+          continue;
         }
+
+        $subtotal = $product['price'] * $quantity;
+        $orderItems[] = [
+          'product_id' => $productId,
+          'product_name' => $product['name'],
+          'product_price' => $product['price'],
+          'quantity' => $quantity,
+          'subtotal' => $subtotal
+        ];
+        $totalAmount += $subtotal;
       }
     }
+
+    // Jika ada produk nonaktif atau error lain, hentikan proses dan kembali ke keranjang
+  if (!empty($errors)) {
+    $_SESSION['checkout_errors'] = $errors;
+    $_SESSION['checkout_form_data'] = [
+      'shipping_address' => $shippingAddress,
+      'payment_method' => $paymentMethod,
+      'notes' => $notes
+    ];
+    header('Location: checkout.php');
+    exit;
+  }
 
     $grandTotal = $totalAmount + $shippingFee;
 
@@ -160,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $today = date('dmY'); // Get today's date in DMYY format for counting
     $datePrefix = date('dmy'); // Format: DDMMYY (we'll use DMYY for prefix)
     
-    // Count orders created today to get the sequence number
+    // Count orders created today to get sequence number
     $todayStart = date('Y-m-d 00:00:00');
     $todayEnd = date('Y-m-d 23:59:59');
     
@@ -185,41 +265,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
 
       // Insert order items
       $orderItemsSuccess = true;
-      $insertItem = $conn->prepare("INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, price, subtotal) VALUES (?, ?, ?, ?, ?, ?, ?)");
+      $insertItem = $conn->prepare("INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal) VALUES (?, ?, ?, ?, ?, ?)");
 
       if (!$insertItem) {
         $orderItemsSuccess = false;
         $errors[] = 'Gagal menyiapkan penyimpanan item pesanan.';
         error_log('Prepare order_items failed: ' . $conn->error);
       } else {
-        $itemProductId = null;
-        $itemName = '';
-        $itemProductPrice = 0;
-        $itemQuantity = 0;
-        $itemPrice = 0;
-        $itemSubtotal = 0;
-
-        $insertItem->bind_param(
-          "iisdidd",
-          $orderId,
-          $itemProductId,
-          $itemName,
-          $itemProductPrice,
-          $itemQuantity,
-          $itemPrice,
-          $itemSubtotal
-        );
-
         foreach ($orderItems as $item) {
           $itemProductId = $item['product_id'];
-          if ($itemProductId !== null) {
-            $itemProductId = (int) $itemProductId;
-          }
           $itemName = $item['product_name'];
           $itemProductPrice = $item['product_price'];
           $itemQuantity = $item['quantity'];
-          $itemPrice = $item['product_price'];
           $itemSubtotal = $item['subtotal'];
+
+          $insertItem->bind_param(
+            "iisdid",
+            $orderId,
+            $itemProductId,
+            $itemName,
+            $itemProductPrice,
+            $itemQuantity,
+            $itemSubtotal
+          );
 
           if (!$insertItem->execute()) {
             $orderItemsSuccess = false;
@@ -254,11 +322,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     }
   }
 
-  $_SESSION['checkout_errors'] = $errors;
-  
-  // Debug: Log errors for troubleshooting
+  // If there are errors, persist and redirect back to checkout so form resets state
   if (!empty($errors)) {
+    $_SESSION['checkout_errors'] = $errors;
+    $_SESSION['checkout_form_data'] = [
+      'shipping_address' => $shippingAddress,
+      'payment_method' => $paymentMethod,
+      'notes' => $notes
+    ];
     error_log("Checkout errors: " . implode(', ', $errors));
+    header('Location: checkout.php');
+    exit;
   }
 }
 
@@ -281,22 +355,75 @@ foreach ($_SESSION['cart'] as $productId => $quantity) {
     $cartItems[] = $item;
     $totalAmount += $item['subtotal'];
   } else {
-    $product = $conn->query("SELECT * FROM products WHERE id = $productId AND status = 'active'")->fetch_assoc();
-    if ($product) {
-      $product['quantity'] = $quantity;
-      $product['subtotal'] = $product['price'] * $quantity;
-      $cartItems[] = $product;
-      $totalAmount += $product['subtotal'];
+    $productStmt = $conn->prepare("SELECT * FROM products WHERE id = ? AND status = 'active'");
+    $productStmt->bind_param("i", $productId);
+    $productStmt->execute();
+    $product = $productStmt->get_result()->fetch_assoc();
+
+    if (!$product) {
+      // Drop invalid item and notify user on next load
+      if (!isset($_SESSION['checkout_errors'])) {
+        $_SESSION['checkout_errors'] = [];
+      }
+      $_SESSION['checkout_errors'][] = 'Produk dengan ID ' . htmlspecialchars($productId) . ' tidak tersedia. Silakan perbarui keranjang.';
+      unset($_SESSION['cart'][$productId]);
+      continue;
+    }
+
+    $product['quantity'] = $quantity;
+    $product['subtotal'] = $product['price'] * $quantity;
+    $cartItems[] = $product;
+    $totalAmount += $product['subtotal'];
+  }
+}
+
+// Get user details for pre-filling
+$userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_id'])->fetch_assoc();
+
+// Default shipping fee (will be calculated based on address)
+$shippingFee = 15000;
+
+// Pre-fill from previous attempt if exists
+$savedForm = $_SESSION['checkout_form_data'] ?? [];
+$prefillAddress = $savedForm['shipping_address'] ?? ($userDetails['address'] ?? '');
+$prefillNotes = $savedForm['notes'] ?? '';
+$prefillPayment = $savedForm['payment_method'] ?? null;
+
+// Simple pre-calc shipping fee based on saved address
+if (!empty($prefillAddress)) {
+  $addrLower = strtolower($prefillAddress);
+  $zones = [
+    'java' => ['jakarta', 'bogor', 'depok', 'tangerang', 'bekasi'],
+    'sumatra' => ['medan', 'palembang', 'bandar lampung', 'batam'],
+    'bali' => ['denpasar', 'kuta', 'seminyak', 'ubud', 'canggu'],
+    'kalimantan' => ['balikpapan', 'samarinda', 'banjarmasin', 'pontianak'],
+    'sulawesi' => ['makassar', 'manado', 'palu', 'kendari'],
+    'papua' => ['jayapura', 'sorong', 'manokwari'],
+    'ntt' => ['kupang', 'ende', 'maumere']
+  ];
+
+  foreach ($zones as $zone => $cities) {
+    foreach ($cities as $city) {
+      if (strpos($addrLower, $city) !== false) {
+        if ($zone === 'sumatra') $shippingFee = 20000;
+        if ($zone === 'bali') $shippingFee = 25000;
+        if ($zone === 'kalimantan') $shippingFee = 30000;
+        if ($zone === 'sulawesi' || $zone === 'ntt') $shippingFee = 35000;
+        if ($zone === 'papua') $shippingFee = 40000;
+        break 2;
+      }
     }
   }
 }
 
-// Default shipping fee (will be calculated based on address)
-$shippingFee = 50000;
-$grandTotal = $totalAmount + $shippingFee;
+// If no valid items remain, redirect to cart
+if (empty($cartItems)) {
+  $_SESSION['error_message'] = 'Tidak ada item valid di keranjang. Silakan pilih produk yang aktif.';
+  header('Location: cart.php');
+  exit;
+}
 
-// Get user details for pre-filling
-$userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_id'])->fetch_assoc();
+$grandTotal = $totalAmount + $shippingFee;
 ?>
 
 <!DOCTYPE html>
@@ -305,63 +432,126 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pembayaran - Ardéliana Lux</title>
+  <title>Pembayaran - Parfumé Lux</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="cart.css">
+  <link rel="stylesheet" href="perfume-cards.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    /* Checkout Page Specific Styles */
     body {
+      background: linear-gradient(135deg, #fdecec 0%, #f5cdcd 50%, #fdecec 100%);
+      min-height: 100vh;
       overflow-x: hidden;
       overflow-y: auto;
     }
+
+    .back-home {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-dark);
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      padding: 10px 20px;
+      background: var(--white);
+      border-radius: 25px;
+      box-shadow: 0 2px 10px rgba(205, 127, 127, 0.1);
+    }
+
+    .back-home:hover {
+      color: var(--hover-color);
+      transform: translateX(-5px);
+      box-shadow: 0 4px 15px rgba(205, 127, 127, 0.2);
+    }
     
     .checkout-section {
-      padding: 80px 0;
+      padding: 40px 0 80px;
       min-height: 60vh;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 40px 20px;
+      background: var(--white);
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.1);
+    }
+
+    .section-title {
+      font-family: var(--header-font);
+      font-size: 3rem;
+      font-weight: bold;
+      background: var(--gradient-color);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .section-subtitle {
+      font-size: 1.1rem;
+      color: var(--light-text);
     }
 
     .checkout-container {
       max-width: 1200px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1.2fr 1fr;
       gap: 30px;
+      align-items: start;
     }
 
     .checkout-form {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      background: var(--white);
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.1);
       overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .checkout-form:hover {
+      box-shadow: 0 15px 40px rgba(205, 127, 127, 0.15);
     }
 
     .form-header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #cc7f7f 100%);
+      color: var(--white);
+      padding: 25px 30px;
       text-align: center;
     }
 
     .form-header h3 {
       margin: 0;
-      font-size: 1.1rem;
-      font-weight: 600;
+      font-size: 1.3rem;
+      font-weight: 700;
+      font-family: var(--header-font);
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .form-body {
-      padding: 25px;
+      padding: 30px;
     }
 
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 25px;
     }
 
     .form-group label {
       display: block;
-      margin-bottom: 8px;
-      font-weight: 500;
-      color: #2c3e50;
+      margin-bottom: 10px;
+      font-weight: 600;
+      color: var(--text-dark);
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     .form-group input,
@@ -369,18 +559,28 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
     .form-group textarea {
       width: 100%;
       padding: 12px 15px;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
       font-size: 1rem;
-      transition: border-color 0.3s ease;
+      color: var(--text-dark);
+      background: var(--white);
+      transition: all 0.3s ease;
+      font-family: 'Montserrat', sans-serif;
     }
 
     .form-group input:focus,
     .form-group select:focus,
     .form-group textarea:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      border-color: var(--btn-color);
+      box-shadow: 0 0 0 3px rgba(205, 127, 127, 0.1);
+    }
+
+    .form-group input:read-only,
+    .form-group input[readonly] {
+      background: #f5f5f5;
+      cursor: not-allowed;
+      color: #999;
     }
 
     .form-group textarea {
@@ -388,95 +588,156 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
       min-height: 100px;
     }
 
+    .form-group small {
+      display: block;
+      margin-top: 5px;
+      color: var(--light-text);
+      font-size: 0.85rem;
+    }
+
     .payment-methods {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 15px;
-      margin-top: 10px;
+      margin-top: 15px;
     }
 
     .payment-method {
       display: flex;
-      align-items: center;
-      padding: 15px;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
+      align-items: flex-start;
+      padding: 18px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
       cursor: pointer;
       transition: all 0.3s ease;
+      background: var(--white);
     }
 
     .payment-method:hover {
-      border-color: #667eea;
-      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+      border-color: var(--btn-color);
+      box-shadow: 0 5px 15px rgba(205, 127, 127, 0.15);
+      transform: translateY(-2px);
     }
 
     .payment-method input[type="radio"] {
-      margin-right: 10px;
+      margin-right: 12px;
+      margin-top: 2px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--btn-color);
+    }
+
+    .payment-method div {
+      flex: 1;
+    }
+
+    .payment-method i {
+      font-size: 1.3rem;
+      color: var(--btn-color);
+      margin-right: 8px;
+    }
+
+    .payment-method strong {
+      display: block;
+      color: var(--text-dark);
+      font-size: 1rem;
+      margin-bottom: 5px;
+    }
+
+    .payment-method p {
+      margin: 5px 0 0 0;
+      color: var(--light-text);
+      font-size: 0.85rem;
     }
 
     .payment-method.selected {
-      border-color: #667eea;
-      background: #f8f9ff;
+      border-color: var(--btn-color);
+      background: linear-gradient(135deg, #fff7f7 0%, #fdecec 100%);
+      box-shadow: 0 5px 15px rgba(205, 127, 127, 0.2);
     }
 
     .shipping-info {
-      background: #e3f2fd;
-      padding: 15px;
-      border-radius: 8px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #fdecec 100%);
+      padding: 20px;
+      border-radius: 12px;
       margin-top: 20px;
-      border-left: 4px solid #2196f3;
+      border: 2px solid var(--btn-color);
     }
 
     .shipping-info h4 {
-      margin: 0 0 10px 0;
-      color: #1976d2;
-      font-size: 0.95rem;
+      margin: 0 0 12px 0;
+      color: var(--text-dark);
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .shipping-info h4 i {
+      color: var(--btn-color);
+      font-size: 1.2rem;
     }
 
     .shipping-info p {
       margin: 0;
-      color: #1565c0;
-      font-size: 0.85rem;
+      color: var(--light-text);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .shipping-info strong {
+      color: var(--text-dark);
     }
 
     .order-summary {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      background: var(--white);
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(205, 127, 127, 0.15);
       overflow: hidden;
       position: sticky;
       top: 20px;
-      max-height: calc(100vh - 100px);
+      max-height: calc(100vh - 40px);
       overflow-y: auto;
+      transition: all 0.3s ease;
+    }
+
+    .order-summary:hover {
+      box-shadow: 0 15px 40px rgba(205, 127, 127, 0.2);
     }
 
     .summary-header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #cc7f7f 100%);
+      color: var(--white);
+      padding: 25px 30px;
       text-align: center;
     }
 
     .summary-header h3 {
       margin: 0;
-      font-size: 1.1rem;
-      font-weight: 600;
+      font-size: 1.3rem;
+      font-weight: 700;
+      font-family: var(--header-font);
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .summary-body {
-      padding: 25px;
+      padding: 30px;
     }
 
     .summary-items {
-      margin-bottom: 20px;
+      margin-bottom: 25px;
     }
 
     .summary-item {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid #e9ecef;
+      align-items: flex-start;
+      padding: 15px 0;
+      border-bottom: 1px solid #f0f0f0;
+      gap: 15px;
     }
 
     .summary-item:last-child {
@@ -488,66 +749,98 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
     }
 
     .item-name {
-      font-weight: 600;
-      margin-bottom: 5px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text-dark);
+      font-size: 1rem;
     }
 
     .item-details {
-      color: #6c757d;
-      font-size: 0.9rem;
+      color: var(--light-text);
+      font-size: 0.85rem;
+      margin-bottom: 5px;
     }
 
     .item-price {
-      font-weight: 600;
-      color: #2c3e50;
+      font-weight: 700;
+      color: var(--hover-color);
+      font-family: var(--header-font);
+      font-size: 1.1rem;
+      white-space: nowrap;
     }
 
     .summary-totals {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 15px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #fdecec 100%);
+      padding: 20px;
+      border-radius: 12px;
+      margin-top: 20px;
+      border: 2px solid var(--btn-color);
     }
 
     .summary-row {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+      color: var(--text-dark);
+      font-size: 1rem;
+    }
+
+    .summary-row span:first-child {
+      font-weight: 500;
+    }
+
+    .summary-row span:last-child {
+      font-weight: 700;
+      color: var(--hover-color);
     }
 
     .summary-row.total {
-      font-weight: 600;
-      font-size: 1.1rem;
-      color: #2c3e50;
-      border-top: 2px solid #dee2e6;
-      padding-top: 8px;
-      margin-top: 8px;
+      font-weight: 700;
+      font-size: 1.3rem;
+      color: var(--text-dark);
+      border-top: 2px solid var(--btn-color);
+      padding-top: 12px;
+      margin-top: 12px;
+      margin-bottom: 0;
+    }
+
+    .summary-row.total span {
+      font-family: var(--header-font);
     }
 
     .place-order-btn {
       width: 100%;
-      padding: 15px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      padding: 18px 25px;
+      background: linear-gradient(135deg, var(--btn-color) 0%, var(--hover-color) 100%);
+      color: var(--white);
       border: none;
-      border-radius: 8px;
+      border-radius: 25px;
       font-size: 1.1rem;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       transition: all 0.3s ease;
-      margin-top: 20px;
+      margin-top: 25px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-family: 'Montserrat', sans-serif;
     }
 
     .place-order-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 10px 25px rgba(205, 127, 127, 0.3);
     }
 
     .place-order-btn:disabled {
-      background: #6c757d;
+      background: linear-gradient(135deg, #999 0%, #777 100%);
       cursor: not-allowed;
       transform: none;
       box-shadow: none;
+      opacity: 0.7;
     }
 
     @keyframes spin {
@@ -559,75 +852,214 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
       animation: spin 1s linear infinite;
       display: inline-block;
     }
+
+    /* Quantity Controls */
+    .quantity-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      background: linear-gradient(135deg, #f5cdcd 0%, #fdecec 100%);
+      padding: 5px 10px;
+      border-radius: 20px;
+      width: fit-content;
+    }
+
+    .qty-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: var(--white);
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--btn-color);
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .qty-btn:hover {
+      background: var(--btn-color);
+      color: var(--white);
+      transform: scale(1.1);
+    }
+
+    .qty-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .qty-input {
+      width: 40px;
+      height: 28px;
+      text-align: center;
+      border: none;
+      background: transparent;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 0;
+      color: var(--text-dark);
+    }
     
-    @media (max-width: 768px) {
+    .qty-input:focus {
+      outline: none;
+    }
+
+    /* Notification */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 10px;
+      color: var(--white);
+      font-weight: 600;
+      z-index: 1000;
+      animation: slideInRight 0.3s ease;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+      max-width: 400px;
+    }
+
+    .notification.success {
+      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    }
+
+    .notification.error {
+      background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 1024px) {
       .checkout-container {
         grid-template-columns: 1fr;
-        gap: 20px;
+      }
+
+      .order-summary {
+        position: static;
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .section-title {
+        font-size: 2rem;
+      }
+
+      .section-subtitle {
+        font-size: 0.95rem;
       }
 
       .payment-methods {
         grid-template-columns: 1fr;
       }
 
-      .order-summary {
-        position: static;
+      .form-body,
+      .summary-body {
+        padding: 20px;
       }
+
+      .form-header,
+      .summary-header {
+        padding: 20px;
+      }
+
+      .form-header h3,
+      .summary-header h3 {
+        font-size: 1.1rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .checkout-section {
+        padding: 20px 0 60px;
+      }
+
+      .section-header {
+        padding: 30px 15px;
+      }
+
+      .section-title {
+        font-size: 1.6rem;
+      }
+
+      .form-body,
+      .summary-body {
+        padding: 15px;
+      }
+
+      .payment-method {
+        padding: 15px;
+      }
+
+      .shipping-info {
+        padding: 15px;
+      }
+
+      .place-order-btn {
+        padding: 15px 20px;
+        font-size: 1rem;
+      }
+
+      .notification {
+        left: 10px;
+        right: 10px;
+        max-width: none;
+      }
+    }
+
+    /* Animation for cards */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .checkout-form,
+    .order-summary {
+      animation: fadeInUp 0.6s ease forwards;
+    }
+
+    .checkout-form {
+      animation-delay: 0.1s;
+    }
+
+    .order-summary {
+      animation-delay: 0.2s;
     }
   </style>
 </head>
 
-<body>
-  <!-- Navigation -->
-  <nav class="navbar">
-    <div class="nav-container">
-      <div class="nav-logo">
-        <img src="images/icon.png" alt="Ardéliana Lux">
-        <span class="logo-text">Ardéliana Lux</span>
-      </div>
-
-      <ul class="nav-menu">
-        <li><a href="index.php" class="nav-link">Beranda</a></li>
-        <li><a href="index.php#about" class="nav-link">Tentang</a></li>
-        <li><a href="index.php#contact" class="nav-link">Kontak</a></li>
-      </ul>
-
-      <div class="nav-actions">
-        <div class="language-switcher">
-          <button class="lang-btn" id="langToggle">
-            <i class="ri-global-line"></i>
-            <span id="currentLang">EN</span>
-          </button>
-        </div>
-
-        <div class="user-menu">
-          <?php if (isLoggedIn()): ?>
-            <div class="user-dropdown">
-              <button class="user-btn">
-                <i class="ri-user-line"></i>
-                <span><?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
-                <i class="ri-arrow-down-s-line"></i>
-              </button>
-              <div class="dropdown-menu">
-                <a href="profile.php"><i class="ri-user-line"></i> Profil</a>
-                <a href="favorites.php"><i class="ri-heart-line"></i> Favorit</a>
-                <a href="cart.php"><i class="ri-shopping-cart-line"></i> Keranjang</a>
-                <a href="orders.php"><i class="ri-shopping-bag-line"></i> Pesanan Saya</a>
-                <a href="auth/logout.php"><i class="ri-logout-box-line"></i> Keluar</a>
-              </div>
-            </div>
-          <?php else: ?>
-            <a href="auth/login.php" class="btn-login">Login</a>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-  </nav>
+<body class="<?php echo isLoggedIn() ? 'user-logged-in' : 'user-logged-out'; ?>">
+  <div style="padding: 1rem 2rem;">
+    <a href="index.php" class="back-home"><i class="ri-arrow-left-line"></i> Kembali ke Beranda</a>
+  </div>
 
   <!-- Checkout Section -->
   <section class="checkout-section">
     <div class="container">
-      <div class="section-header">
+      <div class="section-header" style="text-align: center;">
         <h1 class="section-title">Pembayaran</h1>
         <p class="section-subtitle">Lengkapi detail pesanan Anda</p>
       </div>
@@ -685,7 +1117,7 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
                 <label for="shipping_address">Alamat Pengiriman *</label>
                 <textarea id="shipping_address" name="shipping_address"
                   placeholder="Masukkan alamat pengiriman lengkap (jalan, kota, kode pos)"
-                  required><?php echo htmlspecialchars($userDetails['address'] ?? ''); ?></textarea>
+                  required><?php echo htmlspecialchars($prefillAddress); ?></textarea>
                 <small style="color: #6c757d; font-size: 0.85rem;">
                   Sertakan: Alamat jalan, Kota, Kode pos. Biaya pengiriman akan dihitung berdasarkan lokasi Anda.
                 </small>
@@ -694,9 +1126,12 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
               <div class="shipping-info">
                 <h4><i class="ri-truck-line"></i> Informasi Pengiriman</h4>
                 <p>
-                  <strong>Pulau Jawa:</strong> Rp 50.000<br>
-                  <strong>Sumatera, Bali, Kalimantan:</strong> Rp 75.000 - Rp 100.000<br>
-                  <strong>Sulawesi, NTT, Papua:</strong> Rp 125.000 - Rp 150.000<br>
+                  <strong>Pulau Jawa:</strong> Rp 15.000<br>
+                  <strong>Sumatera:</strong> Rp 20.000<br>
+                  <strong>Bali:</strong> Rp 25.000<br>
+                  <strong>Kalimantan:</strong> Rp 30.000<br>
+                  <strong>Sulawesi & NTT:</strong> Rp 35.000<br>
+                  <strong>Papua:</strong> Rp 40.000<br>
                   <strong>Estimasi pengiriman:</strong> 2-5 hari kerja
                 </p>
               </div>
@@ -705,7 +1140,7 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
                 <label>Metode Pembayaran *</label>
                 <div class="payment-methods">
                   <label class="payment-method">
-                    <input type="radio" name="payment_method" value="bank_transfer" required>
+                    <input type="radio" name="payment_method" value="bank_transfer" required <?php echo $prefillPayment === 'bank_transfer' ? 'checked' : ''; ?>>
                     <div>
                       <i class="ri-bank-line"></i>
                       <strong>Transfer Bank</strong>
@@ -716,7 +1151,7 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
                   </label>
 
                   <label class="payment-method">
-                    <input type="radio" name="payment_method" value="ewallet">
+                    <input type="radio" name="payment_method" value="ewallet" <?php echo $prefillPayment === 'ewallet' ? 'checked' : ''; ?>>
                     <div>
                       <i class="ri-wallet-3-line"></i>
                       <strong>E-Wallet</strong>
@@ -727,7 +1162,7 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
                   </label>
 
                   <label class="payment-method">
-                    <input type="radio" name="payment_method" value="cod">
+                    <input type="radio" name="payment_method" value="cod" <?php echo $prefillPayment === 'cod' ? 'checked' : ''; ?>>
                     <div>
                       <i class="ri-money-dollar-circle-line"></i>
                       <strong>Bayar di Tempat</strong>
@@ -738,7 +1173,7 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
                   </label>
 
                   <label class="payment-method">
-                    <input type="radio" name="payment_method" value="credit_card">
+                    <input type="radio" name="payment_method" value="credit_card" <?php echo $prefillPayment === 'credit_card' ? 'checked' : ''; ?>>
                     <div>
                       <i class="ri-bank-card-line"></i>
                       <strong>Kartu Kredit</strong>
@@ -753,7 +1188,7 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
               <div class="form-group">
                 <label for="notes">Catatan Pesanan (Opsional)</label>
                 <textarea id="notes" name="notes"
-                  placeholder="Instruksi khusus untuk pesanan Anda..."></textarea>
+                  placeholder="Instruksi khusus untuk pesanan Anda..."><?php echo htmlspecialchars($prefillNotes); ?></textarea>
               </div>
             </div>
           </div>
@@ -769,9 +1204,13 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
                   <div class="summary-item">
                     <div class="item-info">
                       <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
-                      <div class="item-details">Jml: <?php echo $item['quantity']; ?></div>
+                      <div class="quantity-controls">
+                        <button type="button" class="qty-btn decrease" data-id="<?php echo $item['id']; ?>">-</button>
+                        <input type="number" class="qty-input" data-id="<?php echo $item['id']; ?>" value="<?php echo $item['quantity']; ?>" min="1" readonly>
+                        <button type="button" class="qty-btn increase" data-id="<?php echo $item['id']; ?>">+</button>
+                      </div>
                     </div>
-                    <div class="item-price"><?php echo formatRupiah($item['subtotal']); ?></div>
+                    <div class="item-price" id="item-subtotal-<?php echo $item['id']; ?>"><?php echo formatRupiah($item['subtotal']); ?></div>
                   </div>
                 <?php endforeach; ?>
               </div>
@@ -801,33 +1240,50 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- ===== FOOTER ===== -->
   <footer class="footer">
     <div class="container">
       <div class="footer-content">
         <div class="footer-section">
-          <h3>Tentang Kami</h3>
-          <p>Ardéliana Lux - Destinasi Anda untuk parfum premium</p>
-        </div>
-
-        <div class="footer-section">
-          <h3>Kontak</h3>
-          <p>Email: info@ardeliana.com<br>
-            Telepon: +62 21 5555 1234</p>
-        </div>
-
-        <div class="footer-section">
-          <h3>Ikuti Kami</h3>
+          <h3>Parfum Lux</h3>
+          <p>Premium parfume store dengan koleksi eksklusif wewangian berkualitas tinggi.</p>
           <div class="social-links">
-            <a href="#"><i class="ri-facebook-line"></i></a>
-            <a href="#"><i class="ri-instagram-line"></i></a>
-            <a href="#"><i class="ri-twitter-line"></i></a>
+            <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer" title="Facebook"><i class="ri-facebook-line"></i></a>
+            <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" title="Instagram"><i class="ri-instagram-line"></i></a>
+            <a href="https://twitter.com/" target="_blank" rel="noopener noreferrer" title="Twitter"><i class="ri-twitter-line"></i></a>
+            <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" title="WhatsApp"><i class="ri-whatsapp-line"></i></a>
           </div>
+        </div>
+
+        <div class="footer-section">
+          <h4>Quick Links</h4>
+          <ul>
+            <li><a href="index.php#about">Tentang</a></li>
+            <li><a href="index.php#products">Produk</a></li>
+            <li><a href="index.php#contact">Kontak</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Customer Service</h4>
+          <ul>
+            <li><a href="shipping-info.php">Shipping Info</a></li>
+            <li><a href="faq.php">FAQ</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Contact Info</h4>
+          <ul>
+            <li><i class="ri-map-pin-line"></i> Jl. Sudirman No. 123, Jakarta</li>
+            <li><i class="ri-phone-line"></i> +62 21 1234 5678</li>
+            <li><i class="ri-mail-line"></i> info@parfumlux.com</li>
+          </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
-        <p>&copy; 2024 Ardéliana Lux. Hak cipta dilindungi.</p>
+        <p>&copy; 2024 Parfumé Lux. All rights reserved. | Developed by Kelompok 2</p>
       </div>
     </div>
   </footer>
@@ -877,38 +1333,37 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
       const nttLocations = ['kupang', 'ende', 'maumere'];
 
       const addressLower = address.toLowerCase();
-      let shippingFee = 50000; // Default
 
       // Detect location and set shipping fee
       for (const location of javaLocations) {
-        if (addressLower.includes(location)) return 50000;
+        if (addressLower.includes(location)) return 15000;
       }
 
       for (const location of sumatraLocations) {
-        if (addressLower.includes(location)) return 75000;
+        if (addressLower.includes(location)) return 20000;
       }
 
       for (const location of baliLocations) {
-        if (addressLower.includes(location)) return 100000;
+        if (addressLower.includes(location)) return 25000;
       }
 
       for (const location of kalimantanLocations) {
-        if (addressLower.includes(location)) return 100000;
+        if (addressLower.includes(location)) return 30000;
       }
 
       for (const location of sulawesiLocations) {
-        if (addressLower.includes(location)) return 125000;
+        if (addressLower.includes(location)) return 35000;
       }
 
       for (const location of papuaLocations) {
-        if (addressLower.includes(location)) return 150000;
+        if (addressLower.includes(location)) return 40000;
       }
 
       for (const location of nttLocations) {
-        if (addressLower.includes(location)) return 125000;
+        if (addressLower.includes(location)) return 35000;
       }
 
-      return 50000; // Default
+      return 15000; // Default
     }
 
     // Update shipping fee when address changes
@@ -953,6 +1408,16 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
         return false;
       }
 
+      // Ensure place_order flag is submitted even if button disabled
+      let placeOrderField = document.querySelector('input[name="place_order"]');
+      if (!placeOrderField) {
+        placeOrderField = document.createElement('input');
+        placeOrderField.type = 'hidden';
+        placeOrderField.name = 'place_order';
+        placeOrderField.value = '1';
+        this.appendChild(placeOrderField);
+      }
+
       // Show loading state
       const submitBtn = document.querySelector('.place-order-btn');
       if (submitBtn) {
@@ -991,6 +1456,84 @@ $userDetails = $conn->query("SELECT * FROM users WHERE id = " . $_SESSION['user_
         }, 300);
       }, 3000);
     }
+
+    // Dynamic Quantity Update
+    document.querySelectorAll('.qty-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        const isIncrease = this.classList.contains('increase');
+        const input = document.querySelector(`.qty-input[data-id="${id}"]`);
+        let currentQty = parseInt(input.value);
+        
+        if (isIncrease) {
+          currentQty++;
+        } else {
+          if (currentQty > 1) currentQty--;
+          else return; // Don't go below 1
+        }
+        
+        // Optimistic UI update
+        input.value = currentQty;
+        
+        // Disable buttons temporarily
+        const btns = document.querySelectorAll(`.qty-btn[data-id="${id}"]`);
+        btns.forEach(b => b.disabled = true);
+        
+        // Send AJAX
+        const formData = new FormData();
+        formData.append('action', 'update_cart_item');
+        formData.append('product_id', id);
+        formData.append('quantity', currentQty);
+        
+        fetch('checkout.php', {
+          method: 'POST',
+          body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+          btns.forEach(b => b.disabled = false);
+          
+          if (data.success) {
+            // Update item subtotal
+            const itemSubtotalEl = document.getElementById(`item-subtotal-${id}`);
+            if (itemSubtotalEl) {
+              itemSubtotalEl.textContent = formatRupiah(data.itemSubtotal);
+            }
+            
+            // Update Subtotal
+            const subtotalEl = document.getElementById('subtotal');
+            if (subtotalEl) {
+              subtotalEl.textContent = formatRupiah(data.totalAmount);
+            }
+            
+            // Recalculate Grand Total
+            // We need to get current shipping fee
+            const shippingFeeText = document.getElementById('shippingFee').textContent;
+            // Parse shipping fee from string (remove non-digits)
+            const shippingFee = parseInt(shippingFeeText.replace(/[^0-9]/g, '')) || 0;
+            
+            const grandTotal = data.totalAmount + shippingFee;
+            const grandTotalEl = document.getElementById('grandTotal');
+            if (grandTotalEl) {
+              grandTotalEl.textContent = formatRupiah(grandTotal);
+            }
+            
+            // Update hidden inputs if any (not needed here as we use session)
+          } else {
+            showNotification(data.message || 'Gagal mengupdate keranjang', 'error');
+            // Revert value
+            input.value = isIncrease ? currentQty - 1 : currentQty + 1;
+          }
+        })
+        .catch(err => {
+          btns.forEach(b => b.disabled = false);
+          console.error(err);
+          showNotification('Terjadi kesalahan koneksi', 'error');
+          // Revert value
+          input.value = isIncrease ? currentQty - 1 : currentQty + 1;
+        });
+      });
+    });
   </script>
 </body>
 

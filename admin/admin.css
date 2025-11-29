@@ -455,6 +455,28 @@ body {
   border: 1px solid #dc3545;
 }
 
+/* Payment Status Badges */
+.status-badge.status-payment-pending {
+  background: linear-gradient(135deg, #e2e3e5, #d3d4d5);
+  color: #41464b;
+  border: 1px solid #6c757d;
+}
+.status-badge.status-payment-paid {
+  background: linear-gradient(135deg, #d4edda, #55efc4);
+  color: #155724;
+  border: 1px solid #28a745;
+}
+.status-badge.status-payment-failed {
+  background: linear-gradient(135deg, #f8d7da, #ff7675);
+  color: #721c24;
+  border: 1px solid #dc3545;
+}
+.status-badge.status-payment-refunded {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  color: #856404;
+  border: 1px solid #ffc107;
+}
+
 /* Role Badges */
 .role-badge {
   padding: 4px 10px;

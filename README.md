@@ -1,4 +1,4 @@
-# Ardéliana Lux - Premium Parfume E-Commerce Website
+# Parfumé Lux - Premium Parfume E-Commerce Website
 
 A sophisticated E-Commerce website for premium perfumes built with PHP, featuring modern design and interactive functionality.
 
@@ -10,7 +10,7 @@ A sophisticated E-Commerce website for premium perfumes built with PHP, featurin
 - **Product Cards Section** with 6 premium perfumes
 - **Responsive Design** that works on all devices
 - **Indonesian Currency (Rupiah)** formatting
-- **Professional Branding** with "Ardéliana Lux" theme
+- **Professional Branding** with "Parfumé Lux" theme
 
 ### 🛍️ E-Commerce Functionality
 
@@ -196,5 +196,5 @@ This project is for educational and demonstration purposes.
 
 ---
 
-**Ardéliana Lux** - Premium Parfume Collection
+**Parfumé Lux** - Premium Parfume Collection
 _Developed with ❤️ for modern e-commerce experiences_
