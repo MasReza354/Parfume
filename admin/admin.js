@@ -11,6 +11,48 @@ document.addEventListener('DOMContentLoaded', function () {
   initializeProductImageUploader();
 });
 
+// Delete product image directly
+function deleteProductImageDirect(button) {
+  const productId = button.getAttribute('data-product-id');
+  
+  console.log('deleteProductImageDirect called, product ID:', productId);
+  
+  if (!productId || productId === '' || productId === '0') {
+    alert('Error: ID produk tidak valid. Silakan tutup modal dan coba lagi.');
+    console.error('Invalid product ID:', productId);
+    return false;
+  }
+  
+  if (confirm('Yakin ingin menghapus gambar produk ini? Gambar akan diganti dengan gambar default.')) {
+    console.log('Creating and submitting form for product ID:', productId);
+    
+    // Create form dynamically
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'dashboard.php';
+    
+    // Add hidden inputs
+    const deleteInput = document.createElement('input');
+    deleteInput.type = 'hidden';
+    deleteInput.name = 'delete_product_image';
+    deleteInput.value = '1';
+    form.appendChild(deleteInput);
+    
+    const idInput = document.createElement('input');
+    idInput.type = 'hidden';
+    idInput.name = 'id';
+    idInput.value = productId;
+    form.appendChild(idInput);
+    
+    // Add to body and submit
+    document.body.appendChild(form);
+    console.log('Form created with ID:', productId);
+    form.submit();
+  } else {
+    console.log('User cancelled deletion');
+  }
+}
+
 // Navigation Management
 function initializeNavigation() {
   const navItems = document.querySelectorAll('.nav-item');
@@ -215,6 +257,7 @@ function showAddProductModal() {
   const form = document.getElementById('productForm');
   const submitBtn = document.getElementById('submitBtn');
   const title = document.getElementById('modalTitle');
+  const deleteImageBtn = document.getElementById('deleteImageBtn');
 
   form.reset();
   title.innerText = 'Tambah Produk Baru';
@@ -224,6 +267,12 @@ function showAddProductModal() {
   // Enable fields for add
   enableFormFields();
   resetProductImageUploader(DEFAULT_PRODUCT_IMAGE, 'Belum ada gambar baru');
+
+  // Hide delete image button for new product
+  if (deleteImageBtn) {
+    deleteImageBtn.style.display = 'none';
+    deleteImageBtn.setAttribute('data-product-id', '');
+  }
 
   modal.style.display = 'flex';
 }
@@ -255,34 +304,50 @@ function editProduct(btn) {
   updateProductImagePreview(data.image || DEFAULT_PRODUCT_IMAGE);
   updateImageStatus('Menggunakan foto yang tersimpan.');
 
-  // Handle Selects for Superadmin, Inputs for Admin
-  if (CURRENT_USER_ROLE === 'superadmin') {
-    document.getElementById('type').value = data.type;
-    document.getElementById('scent').value = data.scent;
+  // Show/hide delete image button
+  const deleteImageBtn = document.getElementById('deleteImageBtn');
+  if (deleteImageBtn) {
+    deleteImageBtn.setAttribute('data-product-id', data.id);
+    console.log('Setting product ID for delete:', data.id);
+    console.log('Product image:', data.image);
+    console.log('Is custom image:', data.image && data.image !== DEFAULT_PRODUCT_IMAGE && data.image !== 'images/perfume.png');
+    
+    // Show button only if image is not default
+    if (data.image && data.image !== DEFAULT_PRODUCT_IMAGE && data.image !== 'images/perfume.png') {
+      deleteImageBtn.style.display = 'block';
+      console.log('Delete button shown for product ID:', data.id);
+      console.log('Button data-product-id:', deleteImageBtn.getAttribute('data-product-id'));
+    } else {
+      deleteImageBtn.style.display = 'none';
+      console.log('Delete button hidden');
+    }
   } else {
-    // Untuk Admin, field ini readonly text input
-    document.getElementById('type_readonly').value = data.type;
-    document.getElementById('scent_readonly').value = data.scent;
+    console.error('Delete button not found!');
   }
 
-  // Jika Role Admin, nonaktifkan field tertentu
-  if (CURRENT_USER_ROLE === 'admin') {
-    disableFormFieldsForAdmin();
-  }
+  // Admin dashboard - type and scent are readonly
+  const typeReadonly = document.getElementById('type_readonly');
+  const scentReadonly = document.getElementById('scent_readonly');
+  if (typeReadonly) typeReadonly.value = data.type;
+  if (scentReadonly) scentReadonly.value = data.scent;
+
+  // Admin can edit name, price, description, image, stock (but not type/scent)
+  disableFormFieldsForAdmin();
 
   modal.style.display = 'flex';
 }
 
 function disableFormFieldsForAdmin() {
-  // Admin cuma bisa edit stock (dan status via toggle luar)
-  // Field lain sudah di set readonly di HTML via PHP, tapi kita pastikan lagi
+  // Admin bisa edit name, price, description, image, dan stock
+  // Tapi tidak bisa edit type dan scent
   const nameField = document.getElementById('name');
   const priceField = document.getElementById('price');
   const descField = document.getElementById('description');
 
-  if (nameField) nameField.readOnly = true;
-  if (priceField) priceField.readOnly = true;
-  if (descField) descField.readOnly = true;
+  // Admin bisa edit semua field ini
+  if (nameField) nameField.readOnly = false;
+  if (priceField) priceField.readOnly = false;
+  if (descField) descField.readOnly = false;
   // Stock tetap editable
 }
 
@@ -297,7 +362,23 @@ function enableFormFields() {
 }
 
 function closeProductModal() {
-  document.getElementById('productModal').style.display = 'none';
+  const modal = document.getElementById('productModal');
+  const form = document.getElementById('productForm');
+
+  modal.style.display = 'none';
+  form.reset();
+
+  // Reset image preview
+  updateProductImagePreview(DEFAULT_PRODUCT_IMAGE);
+  updateImageStatus('Belum ada gambar baru');
+
+  // Hide delete image button
+  const deleteBtn = document.getElementById('deleteImageBtn');
+  if (deleteBtn) {
+    deleteBtn.style.display = 'none';
+    deleteBtn.setAttribute('data-product-id', '');
+  }
+
   if (productImageUploadInput) {
     productImageUploadInput.value = '';
   }
@@ -314,6 +395,12 @@ function deleteProduct(id) {
 }
 
 function toggleProductStatus(id, checked) {
+  // Partnership tidak boleh mengubah status produk
+  if (CURRENT_USER_ROLE === 'partnership') {
+    alert('Anda tidak memiliki izin untuk mengubah status produk.');
+    return;
+  }
+  
   const status = checked ? 'active' : 'inactive';
   const form = document.createElement('form');
   form.method = 'POST';
@@ -544,10 +631,9 @@ function exportOrders() {
 
 // Export Users to Excel
 function exportUsers() {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
-  }
+  // Admin cannot export users (only superadmin can)
+  alert('Hanya Super Admin yang bisa export data pengguna.');
+  return;
 
   const table = document.querySelector('#users-section table');
   const clone = table.cloneNode(true);
@@ -606,10 +692,9 @@ function exportUsers() {
 // === USER MANAGEMENT ===
 
 function showAddUserModal() {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
-  }
+  // Admin cannot add users (only superadmin can)
+  alert('Hanya Super Admin yang bisa menambah pengguna.');
+  return;
   document.getElementById('userModal').style.display = 'flex';
 }
 
@@ -618,10 +703,9 @@ function closeUserModal() {
 }
 
 function editUser(id) {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
-  }
+  // Admin cannot edit users (only superadmin can)
+  alert('Hanya Super Admin yang bisa edit pengguna.');
+  return;
 
   // Fetch user data via AJAX
   fetch(`dashboard.php?action=get_user_details&user_id=${id}`)
@@ -668,10 +752,9 @@ function editUser(id) {
 }
 
 function deleteUser(id) {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
-  }
+  // Admin cannot delete users (only superadmin can)
+  alert('Hanya Super Admin yang bisa menghapus pengguna.');
+  return;
 
   if (confirm('Apakah Anda yakin ingin menghapus pengguna ini?')) {
     const form = document.createElement('form');
@@ -685,11 +768,78 @@ function deleteUser(id) {
 // === SCENT MANAGEMENT ===
 
 function showAddScentModal() {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
+  // Admin dashboard - no permission check needed
+  const modal = document.getElementById('scentModal');
+  const form = modal.querySelector('form');
+  const title = modal.querySelector('h3');
+  const submitBtn = modal.querySelector('button[type="submit"]');
+  
+  form.reset();
+  title.textContent = 'Tambah Aroma Baru';
+  submitBtn.textContent = 'Tambah Aroma';
+  submitBtn.name = 'add_scent';
+  
+  // Remove hidden id if exists
+  const existingId = modal.querySelector('input[name="id"]');
+  if (existingId) existingId.remove();
+  
+  modal.style.display = 'flex';
+}
+
+function editScent(id) {
+  // Admin dashboard - no permission check needed
+  
+  // Fetch scent data via AJAX
+  fetch(`dashboard.php?action=get_scent_details&scent_id=${id}`)
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.success) {
+        const scent = data.scent;
+        const modal = document.getElementById('scentModal');
+        const title = modal.querySelector('h3');
+        const submitBtn = modal.querySelector('button[type="submit"]');
+        
+        title.textContent = 'Edit Aroma';
+        submitBtn.textContent = 'Update Aroma';
+        submitBtn.name = 'update_scent';
+        
+        // Populate form
+        modal.querySelector('input[name="name"]').value = scent.name;
+        modal.querySelector('textarea[name="description"]').value = scent.description;
+        
+        // Add hidden input for id
+        let existingIdInput = modal.querySelector('input[name="id"]');
+        if (!existingIdInput) {
+          const idInput = document.createElement('input');
+          idInput.type = 'hidden';
+          idInput.name = 'id';
+          modal.querySelector('form').appendChild(idInput);
+        }
+        modal.querySelector('input[name="id"]').value = scent.id;
+        
+        modal.style.display = 'flex';
+      } else {
+        alert('Data aroma tidak ditemukan.');
+      }
+    })
+    .catch((err) => {
+      console.error('Error:', err);
+      alert('Terjadi kesalahan saat mengambil data aroma.');
+    });
+}
+
+function deleteScent(id) {
+  // Admin cannot delete scents (only superadmin can)
+  alert('Hanya Super Admin yang bisa menghapus aroma.');
+  return;
+  
+  if (confirm('Apakah Anda yakin ingin menghapus aroma ini?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `<input type="hidden" name="delete_scent" value="1"><input type="hidden" name="id" value="${id}">`;
+    document.body.appendChild(form);
+    form.submit();
   }
-  document.getElementById('scentModal').style.display = 'flex';
 }
 
 function closeScentModal() {
@@ -699,11 +849,78 @@ function closeScentModal() {
 // === TYPE MANAGEMENT ===
 
 function showAddTypeModal() {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
+  // Admin dashboard - no permission check needed
+  const modal = document.getElementById('typeModal');
+  const form = modal.querySelector('form');
+  const title = modal.querySelector('h3');
+  const submitBtn = modal.querySelector('button[type="submit"]');
+  
+  form.reset();
+  title.textContent = 'Tambah Tipe Baru';
+  submitBtn.textContent = 'Tambah Tipe';
+  submitBtn.name = 'add_type';
+  
+  // Remove hidden id if exists
+  const existingId = modal.querySelector('input[name="id"]');
+  if (existingId) existingId.remove();
+  
+  modal.style.display = 'flex';
+}
+
+function editType(id) {
+  // Admin dashboard - no permission check needed
+  
+  // Fetch type data via AJAX
+  fetch(`dashboard.php?action=get_type_details&type_id=${id}`)
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.success) {
+        const type = data.type;
+        const modal = document.getElementById('typeModal');
+        const title = modal.querySelector('h3');
+        const submitBtn = modal.querySelector('button[type="submit"]');
+        
+        title.textContent = 'Edit Tipe';
+        submitBtn.textContent = 'Update Tipe';
+        submitBtn.name = 'update_type';
+        
+        // Populate form
+        modal.querySelector('input[name="name"]').value = type.name;
+        modal.querySelector('textarea[name="description"]').value = type.description;
+        
+        // Add hidden input for id
+        let existingIdInput = modal.querySelector('input[name="id"]');
+        if (!existingIdInput) {
+          const idInput = document.createElement('input');
+          idInput.type = 'hidden';
+          idInput.name = 'id';
+          modal.querySelector('form').appendChild(idInput);
+        }
+        modal.querySelector('input[name="id"]').value = type.id;
+        
+        modal.style.display = 'flex';
+      } else {
+        alert('Data tipe tidak ditemukan.');
+      }
+    })
+    .catch((err) => {
+      console.error('Error:', err);
+      alert('Terjadi kesalahan saat mengambil data tipe.');
+    });
+}
+
+function deleteType(id) {
+  // Admin cannot delete types (only superadmin can)
+  alert('Hanya Super Admin yang bisa menghapus tipe.');
+  return;
+  
+  if (confirm('Apakah Anda yakin ingin menghapus tipe ini?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `<input type="hidden" name="delete_type" value="1"><input type="hidden" name="id" value="${id}">`;
+    document.body.appendChild(form);
+    form.submit();
   }
-  document.getElementById('typeModal').style.display = 'flex';
 }
 
 function closeTypeModal() {
@@ -713,10 +930,9 @@ function closeTypeModal() {
 // === STORE MANAGEMENT ===
 
 function showAddStoreModal() {
-  if (CURRENT_USER_ROLE !== 'superadmin' && CURRENT_USER_ROLE !== 'admin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
-  }
+  // Admin cannot add stores (view only)
+  alert('Admin tidak bisa menambah toko cabang. Hubungi Super Admin.');
+  return;
   const modal = document.getElementById('storeModal');
   const form = modal.querySelector('form');
   form.reset();
@@ -741,7 +957,7 @@ function closeStoreModal() {
 function editStore(id) {
   // Permission check is now handled in PHP for rendering the button, 
   // but we keep a basic check here or allow it since the button wouldn't exist otherwise.
-  // However, Karyawan can edit their own, so we relax this check.
+  // However, Partnership can edit their own, so we relax this check.
   
   // Fetch store data via AJAX
   fetch(`dashboard.php?action=get_store_details&store_id=${id}`)
@@ -750,17 +966,32 @@ function editStore(id) {
       if (data.success) {
         const store = data.store;
         const modal = document.getElementById('storeModal');
+        
+        if (!modal) {
+          console.error('Store modal not found!');
+          alert('Error: Modal toko tidak ditemukan.');
+          return;
+        }
+        
         const title = modal.querySelector('h3');
         const submitBtn = modal.querySelector('button[type="submit"]');
 
-        title.textContent = 'Edit Toko';
-        submitBtn.textContent = 'Update Toko';
-        submitBtn.name = 'update_store';
+        if (title) {
+          title.textContent = 'Edit Toko';
+        }
+        if (submitBtn) {
+          submitBtn.textContent = 'Update Toko';
+          submitBtn.name = 'update_store';
+        }
 
         // Populate form
-        modal.querySelector('input[name="name"]').value = store.name;
-        modal.querySelector('textarea[name="address"]').value = store.address;
-        modal.querySelector('input[name="phone"]').value = store.phone || '';
+        const nameInput = modal.querySelector('input[name="name"]');
+        const addressInput = modal.querySelector('textarea[name="address"]');
+        const phoneInput = modal.querySelector('input[name="phone"]');
+        
+        if (nameInput) nameInput.value = store.name;
+        if (addressInput) addressInput.value = store.address;
+        if (phoneInput) phoneInput.value = store.phone || '';
         
         // Handle Manager Select
         const managerSelect = modal.querySelector('select[name="manager_name"]');
@@ -799,10 +1030,9 @@ function editStore(id) {
 }
 
 function deleteStore(id) {
-  if (CURRENT_USER_ROLE !== 'superadmin') {
-    alert('Anda tidak memiliki akses untuk fitur ini.');
-    return;
-  }
+  // Admin cannot delete stores (only superadmin can)
+  alert('Hanya Super Admin yang bisa menghapus toko cabang.');
+  return;
 
   if (confirm('Apakah Anda yakin ingin menghapus toko ini?')) {
     const form = document.createElement('form');
@@ -857,3 +1087,81 @@ window.addEventListener('load', function () {
     }
   }
 });
+
+
+// === STORE PRODUCTS VIEW ===
+
+function viewStoreProducts(storeId, storeName) {
+  const modal = document.getElementById('storeProductsModal');
+  const title = document.getElementById('storeProductsTitle');
+  const content = document.getElementById('storeProductsContent');
+  
+  if (!modal) {
+    alert('Modal tidak ditemukan');
+    return;
+  }
+  
+  title.textContent = `Produk - ${storeName}`;
+  content.innerHTML = '<p style="text-align: center; padding: 20px;">Memuat data...</p>';
+  modal.style.display = 'flex';
+  
+  // Fetch store products
+  fetch(`dashboard.php?action=get_store_products&store_id=${storeId}`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        const products = data.products || [];
+        
+        if (products.length === 0) {
+          content.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada produk di toko ini.</p>';
+          return;
+        }
+        
+        let html = `
+          <table class="data-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th>Nama Produk</th>
+                <th>Tipe</th>
+                <th>Aroma</th>
+                <th>Harga</th>
+                <th>Stok</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        products.forEach(product => {
+          html += `
+            <tr>
+              <td>${product.name}</td>
+              <td>${product.type}</td>
+              <td>${product.scent}</td>
+              <td>${formatCurrency(product.price)}</td>
+              <td><span class="stock-badge ${product.stock < 20 ? 'low-stock' : ''}">${product.stock}</span></td>
+            </tr>
+          `;
+        });
+        
+        html += `
+            </tbody>
+          </table>
+        `;
+        
+        content.innerHTML = html;
+      } else {
+        content.innerHTML = '<p style="text-align: center; padding: 20px; color: red;">Gagal memuat data produk.</p>';
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      content.innerHTML = '<p style="text-align: center; padding: 20px; color: red;">Terjadi kesalahan saat memuat data.</p>';
+    });
+}
+
+function closeStoreProductsModal() {
+  const modal = document.getElementById('storeProductsModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}

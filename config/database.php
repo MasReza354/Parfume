@@ -36,7 +36,9 @@ function createTables($conn)
         full_name VARCHAR(100) NOT NULL,
         phone VARCHAR(20),
         address TEXT,
-        role ENUM('user', 'admin', 'superadmin', 'karyawan') DEFAULT 'user',
+        role ENUM('user', 'admin', 'superadmin', 'partnership') DEFAULT 'user',
+        branch_id VARCHAR(20) DEFAULT NULL,
+        photo VARCHAR(255) DEFAULT NULL,
         status ENUM('active', 'pending', 'rejected') DEFAULT 'active',
         expires_at TIMESTAMP NULL DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -157,22 +159,24 @@ function createTables($conn)
   // Seed essential accounts only (no dummy data) - Fixed duplicate issue
   $seedUsers = [
     [
-      'username' => 'cabang1',
-      'email' => 'cabang1@gmail.com',
+      'username' => 'partnership',
+      'email' => 'partnership@parfumelux.com',
       'password' => 'password',
-      'full_name' => 'Karyawan Demo',
+      'full_name' => 'Partnership Demo',
       'phone' => null,
       'address' => null,
-      'role' => 'karyawan'
+      'role' => 'partnership',
+      'branch_id' => 'BR001'
     ],
     [
-      'username' => 'demo',
-      'email' => 'demo@parfumlux.com',
+      'username' => 'customer',
+      'email' => 'customer@parfumelux.com',
       'password' => 'demo123',
-      'full_name' => 'Demo User',
+      'full_name' => 'Customer Demo',
       'phone' => null,
       'address' => null,
-      'role' => 'user'
+      'role' => 'user',
+      'branch_id' => null
     ],
   ];
 
@@ -186,16 +190,18 @@ function createTables($conn)
 
     if ($count == 0) {
       $hashedPassword = password_hash($user['password'], PASSWORD_DEFAULT);
-      $stmtInsert = $conn->prepare("INSERT INTO users (username, email, password, full_name, phone, address, role, status) VALUES (?, ?, ?, ?, ?, ?, 'active')");
+      $branchId = $user['branch_id'] ?? null;
+      $stmtInsert = $conn->prepare("INSERT INTO users (username, email, password, full_name, phone, address, role, branch_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
       $stmtInsert->bind_param(
-        "sssssss",
+        "ssssssss",
         $user['username'],
         $user['email'],
         $hashedPassword,
         $user['full_name'],
         $user['phone'],
         $user['address'],
-        $user['role']
+        $user['role'],
+        $branchId
       );
       $stmtInsert->execute();
     }
@@ -213,7 +219,7 @@ function isLoggedIn()
 
 function isAdmin()
 {
-  return isset($_SESSION['user_role']) && ($_SESSION['user_role'] === 'admin' || $_SESSION['user_role'] === 'superadmin' || $_SESSION['user_role'] === 'karyawan');
+  return isset($_SESSION['user_role']) && ($_SESSION['user_role'] === 'admin' || $_SESSION['user_role'] === 'superadmin' || $_SESSION['user_role'] === 'partnership');
 }
 
 function getCurrentUser()

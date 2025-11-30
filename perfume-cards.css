@@ -363,6 +363,15 @@ body {
     width: 100%;
     justify-content: center;
   }
+
+  .stock-badge-small {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+  }
+
+  .stock-badge-small i {
+    font-size: 0.9rem;
+  }
 }
 
 /* Loading Animation */
@@ -398,6 +407,42 @@ body {
 }
 .perfume-card:nth-child(6) {
   animation-delay: 0.6s;
+}
+
+/* Card Header Row */
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* Stock Badge Small */
+.stock-badge-small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #cd7f7f 0%, #b86868 100%);
+  color: white;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(205, 127, 127, 0.3);
+  transition: all 0.3s ease;
+}
+
+.stock-badge-small i {
+  font-size: 1rem;
+}
+
+.stock-badge-small span {
+  line-height: 1;
+}
+
+.perfume-card:hover .stock-badge-small {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(205, 127, 127, 0.4);
 }
 
 /* Hidden class for filtering */

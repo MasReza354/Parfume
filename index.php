@@ -2,7 +2,7 @@
 require_once 'config/database.php';
 
 // Get current language
-$lang = $_GET['lang'] ?? 'id';
+$lang = $_GET['lang'] ?? ($_SESSION['lang'] ?? 'id');
 $_SESSION['lang'] = $lang;
 
 // Language translations
@@ -38,7 +38,31 @@ $translations = [
     'our_collection' => 'Koleksi Premium Kami',
     'discover_scent' => 'Temukan aroma sempurna Anda dari koleksi parfum eksklusif kami',
     'must_login' => 'Anda harus masuk untuk menambahkan produk ke keranjang',
-    'login_required' => 'Login Diperlukan'
+    'login_required' => 'Login Diperlukan',
+    'about_text_2' => 'Kami menyediakan berbagai macam parfum dengan kualitas terbaik, mulai dari aroma floral yang lembut hingga woody yang maskulin. Setiap produk di koleksi kami dipilih dengan teliti untuk memastikan kualitas dan keaslian.',
+    'vision_title' => 'Visi Kami',
+    'vision_text' => 'Menjadi destinasi utama parfum premium di Indonesia yang menghadirkan pengalaman wewangian eksklusif dan berkelas dunia',
+    'mission_title' => 'Misi Kami',
+    'mission_text' => 'Menyediakan parfum original, pelayanan excellent, dan membangun komunitas pecinta parfum yang solid',
+    'feature_original' => '100% Original',
+    'feature_original_desc' => 'Produk asli bergaransi',
+    'feature_shipping' => 'Free Shipping',
+    'feature_shipping_desc' => 'Gratis ongkir untuk pembelian tertentu',
+    'feature_support' => '24/7 Support',
+    'feature_support_desc' => 'Layanan pelanggan setiap saat',
+    'footer_desc' => 'Premium parfume store dengan koleksi eksklusif wewangian berkualitas tinggi.',
+    'quick_links' => 'Quick Links',
+    'customer_service' => 'Customer Service',
+    'contact_info' => 'Contact Info',
+    'shipping_info' => 'Shipping Info',
+    'faq' => 'FAQ',
+    'stock_available' => 'tersedia',
+    'footer_rights' => 'All rights reserved',
+    'developed_by' => 'Developed by',
+    'hero_tagline' => 'Kami menjual hanya',
+    'hero_title' => 'Parfum Premium',
+    'hero_subtitle' => 'Koleksi Parfum Viktor & Rolf',
+    'hero_add_cart' => 'Tambah ke Keranjang'
   ],
   'en' => [
     'home' => 'Home',
@@ -66,11 +90,36 @@ $translations = [
     'try_adjusting_filters' => 'Try adjusting your filters to see more results',
     'about_title' => 'About Parfumé Lux',
     'about_description' => 'Parfumé Lux is a premium perfume store offering exclusive collections of high-quality fragrances from world-renowned brands.',
+    'contact_title' => 'Contact Us',
     'contact_description' => 'Contact us for more information about our products and services.',
     'our_collection' => 'Our Premium Collection',
     'discover_scent' => 'Discover your perfect scent from our exclusive parfume collection',
     'must_login' => 'You must login to add products to cart',
-    'login_required' => 'Login Required'
+    'login_required' => 'Login Required',
+    'about_text_2' => 'We provide a wide variety of perfumes with the best quality, from soft floral scents to masculine woody fragrances. Every product in our collection is carefully selected to ensure quality and authenticity.',
+    'vision_title' => 'Our Vision',
+    'vision_text' => 'To become the leading premium perfume destination in Indonesia, delivering exclusive and world-class fragrance experiences',
+    'mission_title' => 'Our Mission',
+    'mission_text' => 'Providing original perfumes, excellent service, and building a solid community of perfume enthusiasts',
+    'feature_original' => '100% Original',
+    'feature_original_desc' => 'Guaranteed authentic products',
+    'feature_shipping' => 'Free Shipping',
+    'feature_shipping_desc' => 'Free shipping for certain purchases',
+    'feature_support' => '24/7 Support',
+    'feature_support_desc' => 'Customer service anytime',
+    'footer_desc' => 'Premium perfume store with exclusive collections of high-quality fragrances.',
+    'quick_links' => 'Quick Links',
+    'customer_service' => 'Customer Service',
+    'contact_info' => 'Contact Info',
+    'shipping_info' => 'Shipping Info',
+    'faq' => 'FAQ',
+    'stock_available' => 'available',
+    'footer_rights' => 'All rights reserved',
+    'developed_by' => 'Developed by',
+    'hero_tagline' => 'We sell just',
+    'hero_title' => 'Premium Parfume',
+    'hero_subtitle' => 'Viktor & Rolf Parfume Collection',
+    'hero_add_cart' => 'ADD TO CART'
   ]
 ];
 
@@ -78,7 +127,7 @@ $t = $translations[$lang];
 
 // Get products from database - only active products
 $products = [];
-$result = $conn->query("SELECT id, name, type, scent, price, description, image FROM products WHERE status = 'active' ORDER BY name");
+$result = $conn->query("SELECT id, name, type, scent, price, description, image, stock FROM products WHERE status = 'active' ORDER BY name");
 if ($result) {
   while ($row = $result->fetch_assoc()) {
     $products[] = $row;
@@ -111,7 +160,7 @@ $page = $_GET['page'] ?? 'home';
 
 <body class="<?php echo isLoggedIn() ? 'user-logged-in' : 'user-logged-out'; ?>">
   <!-- ===== NAV ===== -->
-  <nav>
+  <nav style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; z-index: 99999 !important; background: #ffffff !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;">
     <div class="nav__logo">
       <a href="index.php">Parfumé<span> Lux.</span></a>
     </div>
@@ -141,10 +190,12 @@ $page = $_GET['page'] ?? 'home';
           <div class="user-dropdown" id="userDropdown">
             <a href="profile.php"><i class="ri-user-line"></i> <?php echo $t['profile']; ?></a>
             <?php if (isAdmin()): ?>
-              <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'karyawan'): ?>
-                <a href="karyawan/dashboard.php"><i class="ri-dashboard-line"></i> Dashboard Karyawan</a>
-              <?php else: ?>
-                <a href="admin/dashboard.php"><i class="ri-dashboard-line"></i> Admin Dashboard</a>
+              <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'partnership'): ?>
+                <a href="partnership/dashboard.php"><i class="ri-dashboard-line"></i> Dashboard Partnership</a>
+              <?php elseif (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): ?>
+                <a href="admin/dashboard.php"><i class="ri-dashboard-line"></i> Dashboard Admin</a>
+              <?php elseif (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'superadmin'): ?>
+                <a href="superadmin/dashboard.php"><i class="ri-dashboard-line"></i> Dashboard Super Admin</a>
               <?php endif; ?>
             <?php endif; ?>
             <a href="auth/logout.php"><i class="ri-logout-box-line"></i> <?php echo $t['logout']; ?></a>
@@ -174,9 +225,9 @@ $page = $_GET['page'] ?? 'home';
       </div>
 
       <div class="content">
-        <h5>We sell just</h5>
-        <h1>Premium Parfume</h1>
-        <h3>Viktor & Rolf Parfume Collection</h3>
+        <h5><?php echo $t['hero_tagline']; ?></h5>
+        <h1><?php echo $t['hero_title']; ?></h1>
+        <h3><?php echo $t['hero_subtitle']; ?></h3>
 
         <div class="size">
           <img src="images/icon.png" class="parfume-icon" alt="" />
@@ -188,7 +239,7 @@ $page = $_GET['page'] ?? 'home';
         <div class="hero-buttons">
           <button class="btn hero-add-to-cart" onclick="addToCart(1)">
             <i class="ri-shopping-cart-line"></i>
-            ADD TO CART
+            <?php echo $t['hero_add_cart']; ?>
           </button>
           <button class="btn-secondary hero-add-favorites" onclick="addToFavorites(1)">
             <i class="ri-heart-line"></i>
@@ -298,7 +349,13 @@ $page = $_GET['page'] ?? 'home';
               </div>
 
               <div class="card-content">
-                <div class="perfume-type"><?php echo htmlspecialchars($product['type']); ?></div>
+                <div class="card-header-row">
+                  <div class="perfume-type"><?php echo htmlspecialchars($product['type']); ?></div>
+                  <div class="stock-badge-small" title="<?php echo $t['stock_available']; ?>">
+                    <i class="ri-box-3-line"></i>
+                    <span><?php echo $product['stock'] ?? 0; ?></span>
+                  </div>
+                </div>
                 <h3 class="perfume-name"><?php echo htmlspecialchars($product['name']); ?></h3>
                 <div class="perfume-scent">
                   <i class="ri-leaf-line"></i>
@@ -328,42 +385,42 @@ $page = $_GET['page'] ?? 'home';
         <div class="about-content">
           <div class="about-text">
             <p><?php echo $t['about_description']; ?></p>
-            <p>Kami menyediakan berbagai macam parfum dengan kualitas terbaik, mulai dari aroma floral yang lembut hingga woody yang maskulin. Setiap produk di koleksi kami dipilih dengan teliti untuk memastikan kualitas dan keaslian.</p>
+            <p><?php echo $t['about_text_2']; ?></p>
             
             <!-- Vision & Mission -->
             <div class="about-features vision-mission-features">
               <div class="feature vm-feature">
                 <i class="ri-eye-line"></i>
-                <h4>Visi Kami</h4>
-                <p>Menjadi destinasi utama parfum premium di Indonesia yang menghadirkan pengalaman wewangian eksklusif dan berkelas dunia</p>
+                <h4><?php echo $t['vision_title']; ?></h4>
+                <p><?php echo $t['vision_text']; ?></p>
               </div>
               <div class="feature vm-feature">
                 <i class="ri-flag-line"></i>
-                <h4>Misi Kami</h4>
-                <p>Menyediakan parfum original, pelayanan excellent, dan membangun komunitas pecinta parfum yang solid</p>
+                <h4><?php echo $t['mission_title']; ?></h4>
+                <p><?php echo $t['mission_text']; ?></p>
               </div>
             </div>
 
             <div class="about-features">
               <div class="feature">
                 <i class="ri-shield-check-line"></i>
-                <h4>100% Original</h4>
-                <p>Produk asli bergaransi</p>
+                <h4><?php echo $t['feature_original']; ?></h4>
+                <p><?php echo $t['feature_original_desc']; ?></p>
               </div>
               <div class="feature">
                 <i class="ri-truck-line"></i>
-                <h4>Free Shipping</h4>
-                <p>Gratis ongkir untuk pembelian tertentu</p>
+                <h4><?php echo $t['feature_shipping']; ?></h4>
+                <p><?php echo $t['feature_shipping_desc']; ?></p>
               </div>
               <div class="feature">
                 <i class="ri-customer-service-2-line"></i>
-                <h4>24/7 Support</h4>
-                <p>Layanan pelanggan setiap saat</p>
+                <h4><?php echo $t['feature_support']; ?></h4>
+                <p><?php echo $t['feature_support_desc']; ?></p>
               </div>
             </div>
           </div>
           <div class="about-image">
-            <img src="images/perfume.png" alt="About Parfumé Lux">
+            <img src="images/perfume.png" alt="<?php echo $t['about_title']; ?>">
           </div>
         </div>
       </div>
@@ -436,7 +493,7 @@ $page = $_GET['page'] ?? 'home';
       <div class="footer-content">
         <div class="footer-section">
           <h3>Parfumé Lux</h3>
-          <p>Premium parfume store dengan koleksi eksklusif wewangian berkualitas tinggi.</p>
+          <p><?php echo $t['footer_desc']; ?></p>
           <div class="social-links">
             <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer" title="Facebook"><i class="ri-facebook-line"></i></a>
             <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" title="Instagram"><i class="ri-instagram-line"></i></a>
@@ -446,7 +503,7 @@ $page = $_GET['page'] ?? 'home';
         </div>
 
         <div class="footer-section">
-          <h4>Quick Links</h4>
+          <h4><?php echo $t['quick_links']; ?></h4>
           <ul>
             <li><a href="#about"><?php echo $t['about']; ?></a></li>
             <li><a href="#products"><?php echo $t['products']; ?></a></li>
@@ -455,25 +512,25 @@ $page = $_GET['page'] ?? 'home';
         </div>
 
         <div class="footer-section">
-          <h4>Customer Service</h4>
+          <h4><?php echo $t['customer_service']; ?></h4>
           <ul>
-            <li><a href="shipping-info.php">Shipping Info</a></li>
-            <li><a href="faq.php">FAQ</a></li>
+            <li><a href="shipping-info.php"><?php echo $t['shipping_info']; ?></a></li>
+            <li><a href="faq.php"><?php echo $t['faq']; ?></a></li>
           </ul>
         </div>
 
         <div class="footer-section">
-          <h4>Contact Info</h4>
+          <h4><?php echo $t['contact_info']; ?></h4>
           <ul>
             <li><i class="ri-map-pin-line"></i> Jl. Sudirman No. 123, Jakarta</li>
-            <li><i class="ri-phone-line"></i> +62 21 1234 5678</li>
-            <li><i class="ri-mail-line"></i> info@parfumelux.com</li>
+            <li><i class="ri-smartphone-line"></i> <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">+62 812-3456-7890</a></li>
+            <li><i class="ri-mail-line"></i> <a href="mailto:info@parfumelux.com" style="color: inherit; text-decoration: none;">info@parfumelux.com</a></li>
           </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
-        <p>&copy; 2024 Parfumé Lux. All rights reserved. | Developed by Kelompok 2</p>
+        <p>&copy; 2024 Parfumé Lux. <?php echo $t['footer_rights']; ?> | <?php echo $t['developed_by']; ?> Kelompok 2</p>
       </div>
     </div>
   </footer>

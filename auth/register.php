@@ -78,21 +78,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   exit;
 }
 
-// Auto-activate pending accounts (run this via cron job or on each login attempt)
-function autoActivatePendingAccounts($conn)
-{
-  // Check if status column exists first
-  $result = $conn->query("SHOW COLUMNS FROM users LIKE 'status'");
-  if ($result->num_rows > 0) {
-    $now = date('Y-m-d H:i:s');
-    $stmt = $conn->prepare("UPDATE users SET status = 'active' WHERE status = 'pending' AND expires_at <= ? AND role = 'user'");
-    $stmt->bind_param("s", $now);
-    $stmt->execute();
-  }
-}
+// Auto-activate pending accounts (disabled - expires_at column not implemented)
+// function autoActivatePendingAccounts($conn)
+// {
+//   // Check if status column exists first
+//   $result = $conn->query("SHOW COLUMNS FROM users LIKE 'status'");
+//   if ($result->num_rows > 0) {
+//     $now = date('Y-m-d H:i:s');
+//     $stmt = $conn->prepare("UPDATE users SET status = 'active' WHERE status = 'pending' AND expires_at <= ? AND role = 'user'");
+//     $stmt->bind_param("s", $now);
+//     $stmt->execute();
+//   }
+// }
 
 // Check for auto-activation on page load
-autoActivatePendingAccounts($conn);
+// autoActivatePendingAccounts($conn);
 ?>
 
 <!DOCTYPE html>

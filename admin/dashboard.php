@@ -1,8 +1,8 @@
 <?php
 require_once '../config/database.php';
 
-// Check if user is admin
-if (!isAdmin()) {
+// Check if user is admin only (not superadmin)
+if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'admin') {
   header('Location: ../index.php');
   exit;
 }
@@ -216,6 +216,82 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_store_details') {
   exit;
 }
 
+// Handle AJAX request for scent details
+if (isset($_GET['action']) && $_GET['action'] === 'get_scent_details') {
+  $scentId = $_GET['scent_id'] ?? 0;
+
+  $scentQuery = $conn->prepare("SELECT * FROM scents WHERE id = ?");
+  $scentQuery->bind_param("i", $scentId);
+  $scentQuery->execute();
+  $scent = $scentQuery->get_result()->fetch_assoc();
+
+  if ($scent) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'scent' => $scent]);
+  } else {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false]);
+  }
+  exit;
+}
+
+// Handle AJAX request for type details
+if (isset($_GET['action']) && $_GET['action'] === 'get_type_details') {
+  $typeId = $_GET['type_id'] ?? 0;
+
+  $typeQuery = $conn->prepare("SELECT * FROM types WHERE id = ?");
+  $typeQuery->bind_param("i", $typeId);
+  $typeQuery->execute();
+  $type = $typeQuery->get_result()->fetch_assoc();
+
+  if ($type) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'type' => $type]);
+  } else {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false]);
+  }
+  exit;
+}
+
+// Handle AJAX request for store products
+if (isset($_GET['action']) && $_GET['action'] === 'get_store_products') {
+  $storeId = $_GET['store_id'] ?? 0;
+
+  $storeQuery = $conn->prepare("SELECT * FROM stores WHERE id = ?");
+  $storeQuery->bind_param("i", $storeId);
+  $storeQuery->execute();
+  $store = $storeQuery->get_result()->fetch_assoc();
+
+  if ($store) {
+    $products = [];
+    
+    if ($store['name'] === 'Toko Pusat') {
+      // For central store, get all products
+      $productsQuery = $conn->query("SELECT id, name, type, scent, price, stock FROM products ORDER BY name");
+      while ($product = $productsQuery->fetch_assoc()) {
+        $products[] = $product;
+      }
+    } else {
+      // For branches, get products from product_branch
+      $productsStmt = $conn->prepare("SELECT p.id, p.name, p.type, p.scent, p.price, pb.stock FROM product_branch pb INNER JOIN products p ON pb.product_id = p.id WHERE pb.branch_id = ? ORDER BY p.name");
+      $productsStmt->bind_param("s", $store['branch_id']);
+      $productsStmt->execute();
+      $productsResult = $productsStmt->get_result();
+      while ($product = $productsResult->fetch_assoc()) {
+        $products[] = $product;
+      }
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'store' => $store, 'products' => $products]);
+  } else {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false]);
+  }
+  exit;
+}
+
 // Handle CRUD operations
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   // Add new product
@@ -251,16 +327,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $image = $_POST['image'] ?? 'images/perfume.png';
     $stock = $_POST['stock'] ?? 0;
 
-    // Only superadmin can update type and scent
+    // Superadmin can update all fields, Admin can update name, price, description, image, and stock
     if ($currentUserRole === 'superadmin') {
       $type = $_POST['type'] ?? '';
       $scent = $_POST['scent'] ?? '';
       $stmt = $conn->prepare("UPDATE products SET name = ?, type = ?, scent = ?, price = ?, description = ?, image = ?, stock = ? WHERE id = ?");
       $stmt->bind_param("sssdssii", $name, $type, $scent, $price, $description, $image, $stock, $id);
+    } elseif ($currentUserRole === 'admin') {
+      // Admin can update name, price, description, image, and stock (but not type and scent)
+      $stmt = $conn->prepare("UPDATE products SET name = ?, price = ?, description = ?, image = ?, stock = ? WHERE id = ?");
+      $stmt->bind_param("sdssii", $name, $price, $description, $image, $stock, $id);
     } else {
-      // Admin can only update stock
-      $stmt = $conn->prepare("UPDATE products SET stock = ? WHERE id = ?");
-      $stmt->bind_param("ii", $stock, $id);
+      $_SESSION['error_message'] = 'Anda tidak memiliki izin untuk mengupdate produk.';
+      header("Location: dashboard.php#products");
+      exit;
     }
 
     if ($stmt->execute()) {
@@ -268,6 +348,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
       $_SESSION['error_message'] = 'Gagal memperbarui produk.';
     }
+    header("Location: dashboard.php#products");
+    exit;
+  }
+
+  // Delete product image
+  if (isset($_POST['delete_product_image'])) {
+    $id = $_POST['id'] ?? 0;
+    
+    // Debug: Log received data
+    error_log("Delete product image - Received ID: " . $id);
+    error_log("POST data: " . print_r($_POST, true));
+    
+    if (empty($id) || $id == 0) {
+      $_SESSION['error_message'] = 'ID produk tidak valid (ID: ' . $id . ')';
+      header("Location: dashboard.php#products");
+      exit;
+    }
+    
+    // Get current image path
+    $getImage = $conn->prepare("SELECT image FROM products WHERE id = ?");
+    $getImage->bind_param("i", $id);
+    $getImage->execute();
+    $result = $getImage->get_result();
+    
+    if ($result->num_rows > 0) {
+      $product = $result->fetch_assoc();
+      $imagePath = $product['image'];
+      
+      $fileDeleted = false;
+      $debugInfo = [];
+      
+      // Delete physical file if exists and not default
+      if (!empty($imagePath) && $imagePath !== 'images/perfume.png') {
+        // Build the correct file path
+        // Image path in DB is like: images/products/product_xxx.jpg
+        // We need to go up one level from admin folder: ../images/products/product_xxx.jpg
+        
+        $filePath = '../' . $imagePath;
+        
+        $debugInfo[] = "DB Path: $imagePath";
+        $debugInfo[] = "File Path: $filePath";
+        $debugInfo[] = "File Exists: " . (file_exists($filePath) ? 'Yes' : 'No');
+        
+        if (file_exists($filePath)) {
+          $debugInfo[] = "Writable: " . (is_writable($filePath) ? 'Yes' : 'No');
+          $debugInfo[] = "Real Path: " . realpath($filePath);
+          
+          // Try to delete the file
+          if (unlink($filePath)) {
+            $fileDeleted = true;
+            $debugInfo[] = "Result: File deleted successfully!";
+          } else {
+            $debugInfo[] = "Result: Failed to delete file";
+            $debugInfo[] = "Error: " . error_get_last()['message'];
+          }
+        } else {
+          $debugInfo[] = "Result: File not found at path";
+          
+          // Try alternative paths
+          $altPath = __DIR__ . '/../' . $imagePath;
+          $debugInfo[] = "Alt Path: $altPath";
+          $debugInfo[] = "Alt Exists: " . (file_exists($altPath) ? 'Yes' : 'No');
+          
+          if (file_exists($altPath)) {
+            if (unlink($altPath)) {
+              $fileDeleted = true;
+              $debugInfo[] = "Result: File deleted using alternative path!";
+            }
+          }
+        }
+      } else {
+        $debugInfo[] = "Skipped: Image is default or empty";
+      }
+      
+      // Update database to default image
+      $updateStmt = $conn->prepare("UPDATE products SET image = 'images/perfume.png' WHERE id = ?");
+      $updateStmt->bind_param("i", $id);
+      
+      if ($updateStmt->execute()) {
+        if ($fileDeleted) {
+          $_SESSION['success_message'] = 'Gambar produk berhasil dihapus!';
+        } else {
+          $_SESSION['success_message'] = 'Database diupdate, tapi file fisik tidak ditemukan atau gagal dihapus.';
+        }
+        // Store debug info for troubleshooting
+        $_SESSION['debug_info'] = implode(' | ', $debugInfo);
+      } else {
+        $_SESSION['error_message'] = 'Gagal menghapus gambar produk dari database.';
+      }
+    } else {
+      $_SESSION['error_message'] = 'Produk tidak ditemukan.';
+    }
+    
     header("Location: dashboard.php#products");
     exit;
   }
@@ -319,8 +492,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
   }
 
-  // Toggle product status
+  // Toggle product status (only superadmin and admin)
   if (isset($_POST['toggle_product_status'])) {
+    // Partnership tidak boleh mengubah status produk
+    if ($currentUserRole === 'partnership') {
+      $_SESSION['error_message'] = 'Anda tidak memiliki izin untuk mengubah status produk.';
+      header("Location: dashboard.php#products");
+      exit;
+    }
+    
     $id = $_POST['id'] ?? 0;
     $status = $_POST['status'] ?? 'active';
 
@@ -336,8 +516,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
   }
 
-  // Add scent (only superadmin)
-  if (isset($_POST['add_scent']) && $currentUserRole === 'superadmin') {
+  // Add scent (admin only)
+  if (isset($_POST['add_scent'])) {
     $name = $_POST['name'] ?? '';
     $description = $_POST['description'] ?? '';
 
@@ -353,8 +533,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
   }
 
-  // Add type (only superadmin)
-  if (isset($_POST['add_type']) && $currentUserRole === 'superadmin') {
+  // Add type (admin only)
+  if (isset($_POST['add_type'])) {
     $name = $_POST['name'] ?? '';
     $description = $_POST['description'] ?? '';
 
@@ -365,6 +545,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $_SESSION['success_message'] = 'Tipe berhasil ditambahkan!';
     } else {
       $_SESSION['error_message'] = 'Gagal menambahkan tipe.';
+    }
+    header("Location: dashboard.php#types");
+    exit;
+  }
+
+  // Update scent (admin only)
+  if (isset($_POST['update_scent'])) {
+    $id = $_POST['id'] ?? 0;
+    $name = $_POST['name'] ?? '';
+    $description = $_POST['description'] ?? '';
+
+    $stmt = $conn->prepare("UPDATE scents SET name = ?, description = ? WHERE id = ?");
+    $stmt->bind_param("ssi", $name, $description, $id);
+
+    if ($stmt->execute()) {
+      $_SESSION['success_message'] = 'Aroma berhasil diperbarui!';
+    } else {
+      $_SESSION['error_message'] = 'Gagal memperbarui aroma.';
+    }
+    header("Location: dashboard.php#scents");
+    exit;
+  }
+
+  // Delete scent (only superadmin)
+  if (isset($_POST['delete_scent']) && $currentUserRole === 'superadmin') {
+    $id = $_POST['id'] ?? 0;
+
+    $stmt = $conn->prepare("DELETE FROM scents WHERE id = ?");
+    $stmt->bind_param("i", $id);
+
+    if ($stmt->execute()) {
+      $_SESSION['success_message'] = 'Aroma berhasil dihapus!';
+    } else {
+      $_SESSION['error_message'] = 'Gagal menghapus aroma.';
+    }
+    header("Location: dashboard.php#scents");
+    exit;
+  }
+
+  // Update type (admin only)
+  if (isset($_POST['update_type'])) {
+    $id = $_POST['id'] ?? 0;
+    $name = $_POST['name'] ?? '';
+    $description = $_POST['description'] ?? '';
+
+    $stmt = $conn->prepare("UPDATE types SET name = ?, description = ? WHERE id = ?");
+    $stmt->bind_param("ssi", $name, $description, $id);
+
+    if ($stmt->execute()) {
+      $_SESSION['success_message'] = 'Tipe berhasil diperbarui!';
+    } else {
+      $_SESSION['error_message'] = 'Gagal memperbarui tipe.';
+    }
+    header("Location: dashboard.php#types");
+    exit;
+  }
+
+  // Delete type (only superadmin)
+  if (isset($_POST['delete_type']) && $currentUserRole === 'superadmin') {
+    $id = $_POST['id'] ?? 0;
+
+    $stmt = $conn->prepare("DELETE FROM types WHERE id = ?");
+    $stmt->bind_param("i", $id);
+
+    if ($stmt->execute()) {
+      $_SESSION['success_message'] = 'Tipe berhasil dihapus!';
+    } else {
+      $_SESSION['error_message'] = 'Gagal menghapus tipe.';
     }
     header("Location: dashboard.php#types");
     exit;
@@ -432,7 +680,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
   }
 
-  // Add store (only superadmin)
+  // Add store (superadmin and admin)
   if (isset($_POST['add_store']) && ($currentUserRole === 'superadmin' || $currentUserRole === 'admin')) {
     $name = $_POST['name'] ?? '';
     $address = $_POST['address'] ?? '';
@@ -461,6 +709,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $updateBranch->execute();
       }
 
+      // Update branch_id in users table for the manager (if partnership)
+      if (!empty($manager_name)) {
+        $updateUserBranch = $conn->prepare("UPDATE users SET branch_id = ? WHERE full_name = ? AND role = 'partnership'");
+        $updateUserBranch->bind_param("ss", $branchId, $manager_name);
+        $updateUserBranch->execute();
+      }
+
       // Insert product inventory
       foreach ($product_stock as $productId => $stock) {
         if ($stock > 0) {
@@ -487,17 +742,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $manager_name = $_POST['manager_name'] ?? '';
     $product_stock = $_POST['product_stock'] ?? [];
 
-    // Check permission: Superadmin or Manager of the store
+    // Check permission: Superadmin, Admin, or Partnership (only their own branch, not Toko Pusat)
     $canEdit = false;
     if ($currentUserRole === 'superadmin' || $currentUserRole === 'admin') {
       $canEdit = true;
-    } else if ($currentUserRole === 'karyawan') {
-      // Check if user is the manager
-      $checkStmt = $conn->prepare("SELECT manager_name, branch_id FROM stores WHERE id = ?");
+    } else if ($currentUserRole === 'partnership') {
+      // Check if user is the manager and it's not Toko Pusat
+      $checkStmt = $conn->prepare("SELECT name, manager_name, branch_id FROM stores WHERE id = ?");
       $checkStmt->bind_param("i", $id);
       $checkStmt->execute();
       $storeData = $checkStmt->get_result()->fetch_assoc();
-      if ($storeData && $storeData['manager_name'] === $_SESSION['full_name']) {
+      
+      $userBranchId = $_SESSION['branch_id'] ?? null;
+      if ($storeData && $storeData['name'] !== 'Toko Pusat' && $userBranchId && $storeData['branch_id'] === $userBranchId) {
         $canEdit = true;
       }
     }
@@ -513,6 +770,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $branchQuery->bind_param("i", $id);
         $branchQuery->execute();
         $branchId = $branchQuery->get_result()->fetch_assoc()['branch_id'];
+
+        // Update branch_id in users table for the manager (if partnership)
+        if (!empty($manager_name) && ($currentUserRole === 'superadmin' || $currentUserRole === 'admin')) {
+          // First, clear branch_id from previous manager (if any)
+          $clearPrevManager = $conn->prepare("UPDATE users SET branch_id = NULL WHERE branch_id = ? AND role = 'partnership'");
+          $clearPrevManager->bind_param("s", $branchId);
+          $clearPrevManager->execute();
+          
+          // Then set branch_id for new manager
+          $updateUserBranch = $conn->prepare("UPDATE users SET branch_id = ? WHERE full_name = ? AND role = 'partnership'");
+          $updateUserBranch->bind_param("ss", $branchId, $manager_name);
+          $updateUserBranch->execute();
+        }
 
         // Update product inventory
         // First, delete existing inventory for this branch
@@ -569,8 +839,8 @@ $stores = $conn->query("SELECT * FROM stores ORDER BY name");
 $centralStockResult = $conn->query("SELECT SUM(stock) as total FROM products");
 $centralStock = $centralStockResult->fetch_assoc()['total'] ?? 0;
 
-// Fetch eligible managers (Admin & Karyawan)
-$managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN ('admin', 'karyawan') ORDER BY full_name");
+// Fetch eligible managers (Admin & Partnership)
+$managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN ('admin', 'partnership') ORDER BY full_name");
 ?>
 
 <!DOCTYPE html>
@@ -612,21 +882,14 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
         <i class="ri-shopping-cart-line"></i>
         <span>Pesanan</span>
       </a>
-
-      <?php if ($currentUserRole === 'superadmin'): ?>
-        <a href="#scents" class="nav-item">
-          <i class="ri-flower-line"></i>
-          <span>Aroma</span>
-        </a>
-        <a href="#types" class="nav-item">
-          <i class="ri-apps-line"></i>
-          <span>Tipe</span>
-        </a>
-        <a href="#users" class="nav-item">
-          <i class="ri-user-line"></i>
-          <span>Pengguna</span>
-        </a>
-      <?php endif; ?>
+      <a href="#scents" class="nav-item">
+        <i class="ri-flower-line"></i>
+        <span>Aroma</span>
+      </a>
+      <a href="#types" class="nav-item">
+        <i class="ri-apps-line"></i>
+        <span>Tipe</span>
+      </a>
 
       <a href="#stores" class="nav-item">
         <i class="ri-store-3-line"></i>
@@ -649,8 +912,8 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                                       echo 'Super Admin';
                                     } elseif ($currentUserRole === 'admin') {
                                       echo 'Administrator';
-                                    } elseif ($currentUserRole === 'karyawan') {
-                                      echo 'Karyawan';
+                                    } elseif ($currentUserRole === 'partnership') {
+                                      echo 'Partnership';
                                     }
                                     ?></span>
         </div>
@@ -676,6 +939,12 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
         echo $_SESSION['success_message'];
         unset($_SESSION['success_message']);
         ?>
+        <?php if (isset($_SESSION['debug_info'])): ?>
+          <details style="margin-top: 10px; font-size: 0.85em;">
+            <summary>Debug Info (klik untuk lihat)</summary>
+            <pre style="margin-top: 5px; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 4px; overflow-x: auto;"><?php echo htmlspecialchars($_SESSION['debug_info']); unset($_SESSION['debug_info']); ?></pre>
+          </details>
+        <?php endif; ?>
       </div>
     <?php endif; ?>
 
@@ -834,7 +1103,8 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                 <td>
                   <label class="toggle-switch">
                     <input type="checkbox" <?php echo ($product['status'] ?? 'active') === 'active' ? 'checked' : ''; ?>
-                      onchange="toggleProductStatus(<?php echo $product['id']; ?>, this.checked)">
+                      onchange="toggleProductStatus(<?php echo $product['id']; ?>, this.checked)"
+                      <?php echo $currentUserRole === 'partnership' ? 'disabled' : ''; ?>>
                     <span class="toggle-slider"></span>
                   </label>
                 </td>
@@ -845,13 +1115,18 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                 </td>
                 <td>
                   <div class="action-buttons">
-                    <button class="btn-edit" onclick="editProduct(this)">
-                      <i class="ri-edit-line"></i>
-                    </button>
+                    <?php if ($currentUserRole === 'superadmin' || $currentUserRole === 'admin'): ?>
+                      <button class="btn-edit" onclick="editProduct(this)">
+                        <i class="ri-edit-line"></i>
+                      </button>
+                    <?php endif; ?>
                     <?php if ($currentUserRole === 'superadmin'): ?>
                       <button class="btn-delete" onclick="deleteProduct(<?php echo $product['id']; ?>)">
                         <i class="ri-delete-bin-line"></i>
                       </button>
+                    <?php endif; ?>
+                    <?php if ($currentUserRole === 'partnership'): ?>
+                      <span class="text-muted" style="font-size: 0.85em;">View Only</span>
                     <?php endif; ?>
                   </div>
                 </td>
@@ -985,6 +1260,7 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
           </table>
         </div>
       </section>
+    <?php endif; ?>
 
       <!-- Scents Section -->
       <section id="scents-section" class="content-section">
@@ -1009,6 +1285,11 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
               </div>
               <h3><?php echo htmlspecialchars($scent['name']); ?></h3>
               <p><?php echo htmlspecialchars($scent['description']); ?></p>
+              <div class="card-actions" style="margin-top: 10px;">
+                <button class="btn-edit btn-sm" onclick="editScent(<?php echo $scent['id']; ?>)" title="Edit">
+                  <i class="ri-edit-line"></i>
+                </button>
+              </div>
             </div>
           <?php endwhile; ?>
         </div>
@@ -1037,18 +1318,22 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
               </div>
               <h3><?php echo htmlspecialchars($type['name']); ?></h3>
               <p><?php echo htmlspecialchars($type['description']); ?></p>
+              <div class="card-actions" style="margin-top: 10px;">
+                <button class="btn-edit btn-sm" onclick="editType(<?php echo $type['id']; ?>)" title="Edit">
+                  <i class="ri-edit-line"></i>
+                </button>
+              </div>
             </div>
           <?php endwhile; ?>
         </div>
       </section>
-    <?php endif; ?>
 
     <!-- Stores Section -->
     <section id="stores-section" class="content-section">
       <div class="section-header">
         <h2>Manajemen Toko Cabang</h2>
         <div class="section-actions">
-          <?php if ($currentUserRole === 'superadmin'): ?>
+          <?php if ($currentUserRole === 'superadmin' || $currentUserRole === 'admin'): ?>
             <button class="btn-primary" onclick="showAddStoreModal()">
               <i class="ri-add-line"></i>
               Tambah Toko
@@ -1066,6 +1351,7 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
               <th>Telepon</th>
               <th>Manager</th>
               <th>Stok Total</th>
+              <th>Total Produk</th>
               <th>Status</th>
               <th>Aksi</th>
             </tr>
@@ -1093,14 +1379,48 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                   $branchStockQuery->execute();
                   $totalStock = $branchStockQuery->get_result()->fetch_assoc()['total'] ?? 0;
                 }
+                
+                // Calculate total products for this store
+                if ($store['name'] === 'Toko Pusat') {
+                  $totalProductsQuery = $conn->query("SELECT COUNT(*) as total FROM products");
+                  $totalProducts = $totalProductsQuery->fetch_assoc()['total'] ?? 0;
+                } else {
+                  $totalProductsStmt = $conn->prepare("SELECT COUNT(DISTINCT product_id) as total FROM product_branch WHERE branch_id = ?");
+                  $totalProductsStmt->bind_param("s", $store['branch_id']);
+                  $totalProductsStmt->execute();
+                  $totalProducts = $totalProductsStmt->get_result()->fetch_assoc()['total'] ?? 0;
+                }
                 ?>
                 <td><?php echo number_format($totalStock, 0, ',', '.'); ?></td>
+                <td>
+                  <button class="btn-view" onclick="viewStoreProducts(<?php echo $store['id']; ?>, '<?php echo htmlspecialchars($store['name'], ENT_QUOTES); ?>')">
+                    <i class="ri-eye-line"></i> <?php echo $totalProducts; ?> Produk
+                  </button>
+                </td>
                 <td><span class="status-badge <?php echo $store['status'] === 'active' ? 'active' : 'inactive'; ?>"><?php echo $store['status'] === 'active' ? 'Aktif' : 'Tidak Aktif'; ?></span></td>
                 <td>
                   <div class="action-buttons">
-                    <button class="btn-edit" onclick="editStore(<?php echo $store['id']; ?>)">
-                      <i class="ri-edit-line"></i>
-                    </button>
+                    <?php
+                    // Admin cannot edit stores (view only)
+                    $canEdit = false;
+                    $canDelete = false;
+                    
+                    if ($canEdit):
+                    ?>
+                      <button class="btn-edit" onclick="editStore(<?php echo $store['id']; ?>)">
+                        <i class="ri-edit-line"></i>
+                      </button>
+                    <?php endif; ?>
+                    
+                    <?php if ($canDelete): ?>
+                      <button class="btn-delete" onclick="deleteStore(<?php echo $store['id']; ?>)">
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
+                    <?php endif; ?>
+                    
+                    <?php if (!$canEdit && !$canDelete): ?>
+                      <span class="text-muted" style="font-size: 0.85em;">View Only</span>
+                    <?php endif; ?>
                   </div>
                 </td>
               </tr>
@@ -1170,8 +1490,38 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
               <label for="description">Deskripsi</label>
               <textarea id="description" name="description" rows="4" required></textarea>
             </div>
+          <?php elseif ($currentUserRole === 'admin'): ?>
+            <!-- Admin fields - can edit name, price, description, image, stock but not type and scent -->
+            <div class="form-row">
+              <div class="form-group">
+                <label>Tipe</label>
+                <input type="text" id="type_readonly" readonly>
+              </div>
+
+              <div class="form-group">
+                <label>Aroma</label>
+                <input type="text" id="scent_readonly" readonly>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="price">Harga (IDR)</label>
+                <input type="number" id="price" name="price" min="0" required>
+              </div>
+
+              <div class="form-group">
+                <label for="stock">Stok</label>
+                <input type="number" id="stock" name="stock" min="0" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="description">Deskripsi</label>
+              <textarea id="description" name="description" rows="4" required></textarea>
+            </div>
           <?php else: ?>
-            <!-- Admin only fields -->
+            <!-- Partnership - view only -->
             <div class="form-row">
               <div class="form-group">
                 <label>Tipe</label>
@@ -1191,7 +1541,7 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
           <?php endif; ?>
 
           <div class="form-group">
-            <label for="imageUploadTrigger">Upload Foto Produk dari Perangkat</label>
+            <label for="imageUpload">Upload Foto Produk dari Perangkat</label>
             <div class="image-upload-wrapper <?php echo $currentUserRole !== 'superadmin' ? 'is-disabled' : ''; ?>">
               <input type="hidden" id="imagePath" name="image" value="images/perfume.png">
               <input type="file" id="imageUpload" accept="image/*" <?php echo $currentUserRole !== 'superadmin' ? 'disabled' : ''; ?>>
@@ -1203,9 +1553,14 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
                 </div>
               </label>
               <div class="image-preview" aria-live="polite">
-                <img id="imagePreview" src="images/perfume.png" alt="Preview Foto Produk">
+                <img id="imagePreview" src="../images/perfume.png" alt="Preview Foto Produk">
               </div>
               <p class="image-status" id="imageStatusText">Belum ada gambar baru</p>
+              <?php if ($currentUserRole === 'superadmin' || $currentUserRole === 'admin'): ?>
+                <button type="button" id="deleteImageBtn" class="btn-delete-image" style="margin-top: 10px; display: none;" data-product-id="" onclick="deleteProductImageDirect(this)">
+                  <i class="ri-delete-bin-line"></i> Hapus Gambar Produk
+                </button>
+              <?php endif; ?>
             </div>
             <?php if ($currentUserRole !== 'superadmin'): ?>
               <small class="form-text text-muted">Hubungi Super Admin untuk mengganti foto produk.</small>
@@ -1247,40 +1602,40 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
         <form method="POST">
           <div class="modal-body">
             <div class="form-group">
-              <label for="username">Username</label>
-              <input type="text" name="username" required>
+              <label for="user_username">Username</label>
+              <input type="text" id="user_username" name="username" required>
             </div>
 
             <div class="form-group">
-              <label for="email">Email</label>
-              <input type="email" name="email" required>
+              <label for="user_email">Email</label>
+              <input type="email" id="user_email" name="email" required>
             </div>
 
             <div class="form-group">
-              <label for="password">Password</label>
-              <input type="password" name="password" required>
+              <label for="user_password">Password</label>
+              <input type="password" id="user_password" name="password" required>
             </div>
 
             <div class="form-group">
-              <label for="full_name">Nama Lengkap</label>
-              <input type="text" name="full_name" required>
+              <label for="user_full_name">Nama Lengkap</label>
+              <input type="text" id="user_full_name" name="full_name" required>
             </div>
 
             <div class="form-group">
-              <label for="phone">Telepon</label>
-              <input type="text" name="phone">
+              <label for="user_phone">Telepon</label>
+              <input type="text" id="user_phone" name="phone">
             </div>
 
             <div class="form-group">
-              <label for="address">Alamat</label>
-              <textarea name="address" rows="3"></textarea>
+              <label for="user_address">Alamat</label>
+              <textarea id="user_address" name="address" rows="3"></textarea>
             </div>
 
             <div class="form-group">
-              <label for="role">Role</label>
-              <select name="role" required>
+              <label for="user_role">Role</label>
+              <select id="user_role" name="role" required>
                 <option value="user">User</option>
-                <option value="karyawan">Karyawan</option>
+                <option value="partnership">Partnership</option>
                 <option value="admin">Admin</option>
                 <option value="superadmin">Super Admin</option>
               </select>
@@ -1305,13 +1660,13 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
         <form method="POST">
           <div class="modal-body">
             <div class="form-group">
-              <label for="name">Nama Aroma</label>
-              <input type="text" name="name" required>
+              <label for="scent_name">Nama Aroma</label>
+              <input type="text" id="scent_name" name="name" required>
             </div>
 
             <div class="form-group">
-              <label for="description">Deskripsi</label>
-              <textarea name="description" rows="3" required></textarea>
+              <label for="scent_description">Deskripsi</label>
+              <textarea id="scent_description" name="description" rows="3" required></textarea>
             </div>
           </div>
 
@@ -1333,13 +1688,13 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
         <form method="POST">
           <div class="modal-body">
             <div class="form-group">
-              <label for="name">Nama Tipe</label>
-              <input type="text" name="name" required>
+              <label for="type_name">Nama Tipe</label>
+              <input type="text" id="type_name" name="name" required>
             </div>
 
             <div class="form-group">
-              <label for="description">Deskripsi</label>
-              <textarea name="description" rows="3" required></textarea>
+              <label for="type_description">Deskripsi</label>
+              <textarea id="type_description" name="description" rows="3" required></textarea>
             </div>
           </div>
 
@@ -1361,23 +1716,23 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
         <form method="POST">
           <div class="modal-body">
             <div class="form-group">
-              <label for="name">Nama Toko</label>
-              <input type="text" name="name" required>
+              <label for="store_name">Nama Toko</label>
+              <input type="text" id="store_name" name="name" required>
             </div>
 
             <div class="form-group">
-              <label for="address">Alamat</label>
-              <textarea name="address" rows="3" required></textarea>
+              <label for="store_address">Alamat</label>
+              <textarea id="store_address" name="address" rows="3" required></textarea>
             </div>
 
             <div class="form-group">
-              <label for="phone">Telepon</label>
-              <input type="text" name="phone">
+              <label for="store_phone">Telepon</label>
+              <input type="text" id="store_phone" name="phone">
             </div>
 
             <div class="form-group">
-              <label for="manager_name">Manager</label>
-              <select name="manager_name" id="manager_name" required>
+              <label for="store_manager_name">Manager</label>
+              <select name="manager_name" id="store_manager_name" required>
                 <option value="">Pilih Manager</option>
                 <?php
                 $managers->data_seek(0);
@@ -1424,6 +1779,80 @@ $managers = $conn->query("SELECT full_name, email, role FROM users WHERE role IN
       </div>
     </div>
   <?php endif; ?>
+
+  <!-- Scent Modal (for admin) -->
+  <div id="scentModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Tambah Aroma Baru</h3>
+        <button class="modal-close" onclick="closeScentModal()">&times;</button>
+      </div>
+      <form method="POST">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="scent_name">Nama Aroma</label>
+            <input type="text" id="scent_name" name="name" required>
+          </div>
+
+          <div class="form-group">
+            <label for="scent_description">Deskripsi</label>
+            <textarea id="scent_description" name="description" rows="3" required></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeScentModal()">Batal</button>
+          <button type="submit" name="add_scent">Tambah Aroma</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Type Modal (for admin) -->
+  <div id="typeModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Tambah Tipe Baru</h3>
+        <button class="modal-close" onclick="closeTypeModal()">&times;</button>
+      </div>
+      <form method="POST">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="type_name">Nama Tipe</label>
+            <input type="text" id="type_name" name="name" required>
+          </div>
+
+          <div class="form-group">
+            <label for="type_description">Deskripsi</label>
+            <textarea id="type_description" name="description" rows="3" required></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeTypeModal()">Batal</button>
+          <button type="submit" name="add_type">Tambah Tipe</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Store Products Modal -->
+  <div id="storeProductsModal" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3 id="storeProductsTitle">Produk Toko</h3>
+        <button type="button" class="modal-close" onclick="closeStoreProductsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="storeProductsContent">
+          <p>Memuat data...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeStoreProductsModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
 
   <script src="admin.js"></script>
   <script>

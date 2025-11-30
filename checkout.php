@@ -299,6 +299,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
       }
 
       if ($orderItemsSuccess) {
+        // Reduce product stock
+        $updateStock = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+        foreach ($orderItems as $item) {
+          $itemProductId = $item['product_id'];
+          $itemQuantity = $item['quantity'];
+          
+          $updateStock->bind_param("iii", $itemQuantity, $itemProductId, $itemQuantity);
+          $updateStock->execute();
+          
+          // Log if stock update failed (stock insufficient)
+          if ($updateStock->affected_rows === 0) {
+            error_log("Warning: Stock not reduced for product ID $itemProductId. Possible insufficient stock.");
+          }
+        }
+        
         // Clear cart
         unset($_SESSION['cart']);
 

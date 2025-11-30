@@ -8,10 +8,12 @@ $_SESSION['lang'] = $lang;
 
 // Prevent logged-in users from accessing login again
 if (isLoggedIn()) {
-  if (isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], ['admin', 'superadmin'])) {
+  if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'superadmin') {
+    header('Location: ../superadmin/dashboard.php');
+  } elseif (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
     header('Location: ../admin/dashboard.php');
-  } elseif (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'karyawan') {
-    header('Location: ../karyawan/dashboard.php');
+  } elseif (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'partnership') {
+    header('Location: ../partnership/dashboard.php');
   } else {
     header('Location: ../index.php');
   }
@@ -74,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['email'] = $user['email'];
         $_SESSION['full_name'] = $user['full_name'];
         $_SESSION['user_role'] = $user['role'];
+        $_SESSION['branch_id'] = $user['branch_id'] ?? null;
 
         // Clear CAPTCHA after successful use
         unset($_SESSION['captcha']);
@@ -91,8 +94,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }).then((result) => {
             if (result.dismiss === Swal.DismissReason.timer || result.isConfirmed) {
               // Redirect based on role
-              if (' . json_encode($user['role']) . ' === "admin" || ' . json_encode($user['role']) . ' === "superadmin") {
+              if (' . json_encode($user['role']) . ' === "superadmin") {
+                window.location.href = "../superadmin/dashboard.php";
+              } else if (' . json_encode($user['role']) . ' === "admin") {
                 window.location.href = "../admin/dashboard.php";
+              } else if (' . json_encode($user['role']) . ' === "partnership") {
+                window.location.href = "../partnership/dashboard.php";
               } else {
                 window.location.href = "../index.php";
               }
@@ -284,24 +291,24 @@ function generateCaptcha()
 
           <div class="quick-account-card">
             <div>
-              <p class="qa-role"><i class="ri-user-settings-line"></i> Karyawan</p>
-              <p class="qa-cred"><strong>Username:</strong> cabang1</p>
-              <p class="qa-cred"><strong>Email:</strong> cabang1@gmail.com</p>
+              <p class="qa-role"><i class="ri-user-settings-line"></i> Partnership Demo</p>
+              <p class="qa-cred"><strong>Username:</strong> partnership</p>
+              <p class="qa-cred"><strong>Email:</strong> partnership@parfumelux.com</p>
               <p class="qa-cred"><strong>Password:</strong> password</p>
             </div>
-            <button type="button" class="btn-secondary fill-account" data-username="cabang1" data-password="password">
+            <button type="button" class="btn-secondary fill-account" data-username="partnership" data-password="password">
               <i class="ri-login-box-line"></i> Isi otomatis
             </button>
           </div>
 
           <div class="quick-account-card">
             <div>
-              <p class="qa-role"><i class="ri-user-smile-line"></i> Demo User</p>
-              <p class="qa-cred"><strong>Username:</strong> demo</p>
-              <p class="qa-cred"><strong>Email:</strong> demo@parfumlux.com</p>
+              <p class="qa-role"><i class="ri-user-smile-line"></i> Customer Demo</p>
+              <p class="qa-cred"><strong>Username:</strong> customer</p>
+              <p class="qa-cred"><strong>Email:</strong> customer@parfumelux.com</p>
               <p class="qa-cred"><strong>Password:</strong> demo123</p>
             </div>
-            <button type="button" class="btn-secondary fill-account" data-username="demo" data-password="demo123">
+            <button type="button" class="btn-secondary fill-account" data-username="customer" data-password="demo123">
               <i class="ri-login-box-line"></i> Isi otomatis
             </button>
           </div>
